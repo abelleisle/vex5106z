@@ -2,7 +2,7 @@
 
 This is a stub mirror. The full source code for this commit is at:
 
-https://git.bitcicle.com/andy/vex5106z/src/commit/c16eeb08e60e724b77bdf173a324175039d4019a
+https://git.bitcicle.com/andy/vex5106z/src/commit/f60fcd1bb7b1044a7da5f6ecff89289f091a2773
 
 To browse or clone the full repository, visit:
 
