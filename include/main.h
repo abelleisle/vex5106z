@@ -3,16 +3,17 @@
 
 #include <API.h>
 
+#define LCD_PORT uart2
+
+#define ANALOG_PORT(x) (x+13)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-extern Gyro gyro;
-extern unsigned int imeCount;
-
+void autonomous();
 void initializeIO();
 void initialize();
-void autonomous();
 void operatorControl();
 
 #ifdef __cplusplus

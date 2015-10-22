@@ -1,15 +1,11 @@
-#include "main.h"
+#include <main.h>
 
-Gyro gyro;
-unsigned int imeCount=0;
+unsigned int imeCount;
 
-void initializeIO(void){
-	pinMode(1,INPUT_ANALOG);
+void initializeIO(){
+	pinMode(ANALOG_PORT(1),INPUT_ANALOG);
 }
 
-void initialize(void){
-	lcdInit(uart1);
-	lcdClear(uart1);
-	gyro=gyroInit(2,0);
-	imeCount=imeInitializeAll();
+void initialize(){
+	imeCount = imeInitializeAll();
 }
