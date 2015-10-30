@@ -3,7 +3,7 @@
 
 #include <API.h>
 
-#define LCD_PORT uart2
+#define LCD_PORT uart1
 
 #define ANALOG_PORT(x) (x+13)
 

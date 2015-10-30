@@ -1,5 +1,6 @@
 #include <main.h>
 
+Gyro gyro;
 unsigned int imeCount;
 
 void initializeIO(){
@@ -8,4 +9,8 @@ void initializeIO(){
 
 void initialize(){
 	imeCount = imeInitializeAll();
+	gyro=gyroInit(2,0);
+	lcdInit(uart1);
+	lcdClear(uart1);
+	lcdSetBacklight(uart1,1);
 }
