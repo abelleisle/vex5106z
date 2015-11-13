@@ -11,6 +11,34 @@
 extern "C" {
 #endif
 
+/*
+ *	Aliases for all the motors, stored in an enum for convenience.
+*/
+
+enum MOTOR_PORT_MAP {
+	UNUSED = 0,
+	CANNON1,
+	CANNON2,
+	CANNON3,
+	CANNON4,
+	INTAKE,
+	DRIVER,
+	DRIVEL,
+	LIFT1,
+	LIFT2,
+	ROTATER,
+};
+
+enum IME_PORT_MAP {
+	IDRIVER,
+	IDRIVEL,
+	IROTATER,
+	ILIFT1,
+	ILIFT2,
+	ICANNON3
+};
+
+
 void autonomous();
 void initializeIO();
 void initialize();
