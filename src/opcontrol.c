@@ -201,12 +201,15 @@ void operatorControl(){
 		delay(10);	// Short delay to allow task switching.
 	}
 }
+
+
 //Totally Theoretical PseudoCode for AutoShoot
 //Based on IME data:
 double lVel;//=velocity of left side
 double rVel;//=velocity of right side
 double cVel;//=velocity of center (calculated below)
 double aVel;//=angular velocity (calculated below)
+
 
 //Used to find rectangular vectors * double aVel=angular velocity of robot
 //Used to store the rectangular vectors:
@@ -215,37 +218,71 @@ double xVel2;
 double yVel1;
 double yVel2;
 
-//Final Position Vectors
+
+//Final Position Vectors, robot and target
 double xPos;
 double yPos;
+double xTarget;
+double yTarget;
+
+
+//time difference variables
+double time1=0;
+double time2=0;
+
+int start;//1 is right blue, 2 is left blue, 3 is right blue, 4 is left blue
+
 
 //Vector Assignments:
 void Vectors(){
-while(1){//something in the brackets
-	int i;
-	i++;
-	cVel=(lVel+rVel)/2;
-	if(lVel>rVel){
-		aVel=cVel/(16*lVel/(rVel-lVel));
-	}
-	if(rVel>lVel){
-		aVel=cVel/(16*rVel/(lVel-rVel));
-	}
-	else{
-		aVel=0;
-				if(i%2==0){
-					xVel1=cos(aVel)*cVel;
-					yVel1=sin(aVel)*cVel;
-				}
-				else{
-					xVel2=cos(aVel)*cVel;
-					yVel2=sin(aVel)*cVel;
-				}
+	if(start==1){xPos=37;yPos=138;xTarget=137;yTarget=7;}
+	if(start==2){xPos=13;yPos=114;xTarget=137;yTarget=7;}
+	if(start==3){xPos=37;yPos=13;xTarget=137;yTarget=137;}
+	if(start==4){xPos=13;yPos=37;xTarget=137;yTarget=137;}
+	while(1){//something in the brackets
 
-		xPos+=((xVel1+xVel2)/2);//*time elapsed between cycles
-				yPos+=((yVel1+yVel2)/2);//*time elapsed between cycles
-				delay(20);
-	}
-}
-}
+		imeGetVelocity(DRIVEL,&lVel);//get reading of left velocity
+		lVel=lVel/24.5*8.64;
+
+		imeGetVelocity(DRIVER,&rVel);//get reading of right velocity
+		rVel=rVel/24.5*8.64;
+
+		int i=0;//counter for use of alternating variables
+		i++;
+		if(i==1){//just used the first time
+			time1=milis();
+		}
+		cVel=(lVel+rVel)/2;//calculates the (c)enter of the robot's velocity
+
+		if(lVel>rVel){
+			aVel=cVel/(16*lVel/(rVel-lVel));
+		}
+
+		if(rVel>lVel){
+			aVel=cVel/(16*rVel/(lVel-rVel));
+		}
+
+		else{
+			aVel=0;
+
+			if(i%2==0){
+				xVel1=cos(aVel)*cVel;//every 2 it uses these variables
+				yVel1=sin(aVel)*cVel;
+			}
+
+			else{
+				xVel2=cos(aVel)*cVel;//otherwise it uses these
+				yVel2=sin(aVel)*cVel;
+			}
+
+			time2=milis();//records the time before calculating
+
+			xPos+=((xVel1+xVel2)/2)*(time2-time1);//finds the area of the x curve using trapezoidal approx.
+			yPos+=((yVel1+yVel2)/2)*(time2-time1);//finds the area of the y curve using trapezoidal approx.
+
+			delay(20);
+		}
+		time1=milis();//records time between calculations for next time
+	}//end of while
+}//end of Vectors
 
