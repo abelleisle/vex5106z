@@ -6,7 +6,7 @@ extern Gyro gyro;	// Originally defined in init.c
 
 /*
  *	These keep track of the current LCD 'window' and the number of 'windows' that exist.
-*/
+ */
 
 static   signed int ctty=0;
 const  unsigned int mtty=4;
@@ -19,7 +19,7 @@ static double gyroRotation;
 
 /*
  *	This runs as a separate task to update the LCD.
-*/
+ */
 
 void operatorLCD(void *unused){
 	static int ime;
@@ -28,7 +28,7 @@ void operatorLCD(void *unused){
 
 		/*
 		 *	Display information according to the current 'window'.
-		*/
+		 */
 
 		switch(ctty){
 		default:
@@ -36,7 +36,7 @@ void operatorLCD(void *unused){
 		case 0:	//	Welcome screen
 
 			lcdSetText(uart1,1,"   JOHN  CENA   ");
-			  lcdPrint(uart1,2,"  ===========%3d",motorGet(CANNON1));
+			lcdPrint(uart1,2,"  ===========%3d",motorGet(CANNON1));
 			break;
 
 		case 1:	//	Battery levels in volts
@@ -76,7 +76,7 @@ void operatorPoll(){
 
 		/*
 		 *	Read in rotations of motors and the current angle of the robot.
-		*/
+		 */
 
 		imeGet(DRIVEL,&idl);			// Get reading
 		imeDriveLeft  = idl / 627.0L;	// Convert to wheel rotations
@@ -140,21 +140,21 @@ void operatorControl(){
 		// Set the intake's speed.
 
 		motorSet(INTAKE,joystickGetDigital(1,6,JOY_UP  )?  127 :
-						joystickGetDigital(1,6,JOY_DOWN)? -127 :
-															 0 );
+				joystickGetDigital(1,6,JOY_DOWN)? -127 :
+						0 );
 
 		// Set the lift's speed.
 
 		lift=joystickGetDigital(2,6,JOY_UP  )?  127 :
-			 joystickGetDigital(2,6,JOY_DOWN)? -127 :
-					 	 	 	 	 	 	 	  0 ;
+				joystickGetDigital(2,6,JOY_DOWN)? -127 :
+						0 ;
 
 		motorSet(LIFT1,lift);
 		motorSet(LIFT2,lift);
 
 		/*
 		 *	Miscellaneous operation handlers.
-		*/
+		 */
 
 		if(++uiinc==20){	// Equates to every 200ms
 			uiinc=0;
@@ -162,14 +162,14 @@ void operatorControl(){
 			// Goto next 'window'.
 
 			if(joystickGetDigital(1,7,JOY_UP) ||
-			   joystickGetDigital(2,7,JOY_UP) ){
+					joystickGetDigital(2,7,JOY_UP) ){
 				if(++ctty==mtty)ctty=0;
 			}
 
 			// Goto previous 'window'.
 
 			if(joystickGetDigital(1,7,JOY_DOWN) ||
-			   joystickGetDigital(2,7,JOY_DOWN) ){
+					joystickGetDigital(2,7,JOY_DOWN) ){
 				if(--ctty==-1)ctty=mtty-1;
 			}
 
@@ -201,3 +201,51 @@ void operatorControl(){
 		delay(10);	// Short delay to allow task switching.
 	}
 }
+//Totally Theoretical PseudoCode for AutoShoot
+//Based on IME data:
+double lVel;//=velocity of left side
+double rVel;//=velocity of right side
+double cVel;//=velocity of center (calculated below)
+double aVel;//=angular velocity (calculated below)
+
+//Used to find rectangular vectors * double aVel=angular velocity of robot
+//Used to store the rectangular vectors:
+double xVel1;
+double xVel2;
+double yVel1;
+double yVel2;
+
+//Final Position Vectors
+double xPos;
+double yPos;
+
+//Vector Assignments:
+void Vectors(){
+while(1){//something in the brackets
+	int i;
+	i++;
+	cVel=(lVel+rVel)/2;
+	if(lVel>rVel){
+		aVel=cVel/(16*lVel/(rVel-lVel));
+	}
+	if(rVel>lVel){
+		aVel=cVel/(16*rVel/(lVel-rVel));
+	}
+	else{
+		aVel=0;
+				if(i%2==0){
+					xVel1=cos(aVel)*cVel;
+					yVel1=sin(aVel)*cVel;
+				}
+				else{
+					xVel2=cos(aVel)*cVel;
+					yVel2=sin(aVel)*cVel;
+				}
+
+		xPos+=((xVel1+xVel2)/2);//*time elapsed between cycles
+				yPos+=((yVel1+yVel2)/2);//*time elapsed between cycles
+				delay(20);
+	}
+}
+}
+
