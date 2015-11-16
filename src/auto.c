@@ -1,6 +1,6 @@
 #include <main.h>
 
-#define TARGET_RPM 1970
+#define TARGET_SPEED 65
 
 static unsigned int time;
 
@@ -10,36 +10,31 @@ void autoDelay(unsigned int ms){
 }
 
 void autonomous(){
-	static int    trpm;
-	static double rpm;
-	static char cs;
+	static char speed = 0;
 
 	time = 15000;
-	cs = rpm = trpm = 0;
 
 	do{
 
-		cs+=cs<100?10:0;
+		speed+=10;
 
-		motorSet(CANNON1,cs);
-		motorSet(CANNON2,cs);
-		motorSet(CANNON3,cs);
-		motorSet(CANNON4,cs);
+		motorSet(CANNON1,speed);
+		motorSet(CANNON2,speed);
+		motorSet(CANNON3,speed);
+		motorSet(CANNON4,speed);
 
-		autoDelay(800);
+		autoDelay(200);
 
-		imeGetVelocity(ICANNON3,&trpm);
-		rpm=abs(trpm)/24.5L;
-		rpm*=25.0L;
+	}while(speed<TARGET_SPEED);
 
-	}while(rpm<TARGET_RPM);
+	autoDelay(800);
 
-	motorSet(LIFT1,127);
-	motorSet(LIFT2,127);
+	motorSet(LIFT1 ,127);
+	motorSet(LIFT2 ,127);
+	motorSet(INTAKE,127);
 
+	//while(1);
 	delay(time);
-
-	// Stop										4000ms remaining
 
 	motorStopAll();
 

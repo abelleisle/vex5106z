@@ -2,133 +2,60 @@
 #include <stdint.h>
 #include <math.h>
 
+#define PI 3.1415926535L
+
 extern Gyro gyro;	// Originally defined in init.c
 
-/*
- *	These keep track of the current LCD 'window' and the number of 'windows' that exist.
- */
+static double Vl,	// left wheel velocity
+			  Vr,	// right wheel velocity
+			  Vc,	// center/average velocity
+			  Va,	// angular velocity
+			  Vra;	// velocity ratio
 
-static   signed int ctty=0;
-const  unsigned int mtty=4;
+static double R;	// radius of current circular path
 
-static double imeDriveLeft;
-static double imeDriveRight;
-static double imeRotater;
+static double Px=0,	// X position
+			  Py=0;	// Y position
 
-static double gyroRotation;
-
-/*
- *	This runs as a separate task to update the LCD.
- */
-
-void operatorLCD(void *unused){
-	static int ime;
-
+void operatorLCD(void *start){
 	while(1){
 
-		/*
-		 *	Display information according to the current 'window'.
-		 */
-
-		switch(ctty){
-		default:
-
-		case 0:	//	Welcome screen
-
-			lcdSetText(uart1,1,"   JOHN  CENA   ");
-			lcdPrint(uart1,2,"  ===========%3d",motorGet(CANNON1));
-			break;
-
-		case 1:	//	Battery levels in volts
-
-			lcdPrint(uart1,1,"MAIN: %0.3f",(float)(powerLevelMain()/1000.0f));
-			lcdPrint(uart1,2,"EXP : %0.3f",(float)(analogRead(1)   / 280.0f));
-			break;
-
-		case 2:	//	Gyroscope readings
-
-			imeGet(IROTATER,&ime);
-
-			double rot = ime / 3.0L / 627.2L * 10;
-
-			rot = floor(rot) / 10;
-
-			lcdPrint(uart1,1,"Gyro: %d",gyroGet(gyro));
-			lcdPrint(uart1,2,"Rot.: %.1lf",rot);
-
-			break;
-
-		case 3:
-
-			lcdPrint(uart1,1,"%.3lf",imeDriveLeft);
-			lcdPrint(uart1,2,"%.3lf",imeDriveRight);
-
-			break;
-		}
-
-		delay(500);
-	}
-}
-
-void operatorPoll(){
-	static int idl,idr,ir,gr;
-	while(1){
-
-		/*
-		 *	Read in rotations of motors and the current angle of the robot.
-		 */
-
-		imeGet(DRIVEL,&idl);			// Get reading
-		imeDriveLeft  = idl / 627.0L;	// Convert to wheel rotations
-		imeDriveLeft *=  8.64L;			// Convert to distance in inches
-
-		imeGet(DRIVER,&idr);			// Get reading
-		imeDriveRight  = idr / 627.0L;	// Convert to wheel rotations
-		imeDriveRight *=  8.64L;		// Convert to distance in inches
-
-		imeGet(ROTATER,&ir);
-		imeRotater = ir / 627.0L;
-
-		gyroRotation = gyroGet(gyro);
+		lcdPrint(uart1,1,"%.3lf, %.3lf",R,Va);
 
 		delay(100);
 	}
 }
 
+static unsigned int START;
+
 void operatorControl(){
 
-	static bool selfAim = false;
-
 	static char uiinc = 0;	// See below
+	static char in=0,lift;	// Used to set the multiple cannon motors to the same joy-stick reading.
 
-	static char in,lift;	// Used to set the multiple cannon motors to the same joy-stick reading.
+	static char joy;
 
-	taskCreate(operatorLCD ,TASK_DEFAULT_STACK_SIZE,NULL,TASK_PRIORITY_DEFAULT);
-	taskCreate(operatorPoll,TASK_DEFAULT_STACK_SIZE,NULL,TASK_PRIORITY_DEFAULT);
+	/*
+	 *	Start other tasks.
+	*/
+
+	START = ((!digitalRead(3)) | (!digitalRead(4)<<1)) + 1;
+	taskCreate(operatorLCD ,TASK_DEFAULT_STACK_SIZE,&START,TASK_PRIORITY_DEFAULT);
 
 	while(1){
 
 		//	Set the drive motors speeds.
 
-		motorSet(DRIVEL,joystickGetAnalog(1,3));
-		motorSet(DRIVER,joystickGetAnalog(1,2));
+		joy=joystickGetAnalog(1,3);
+		if(joy < 10 && joy > -10)joy=0;
+		motorSet(DRIVEL,joy);
+		joy=joystickGetAnalog(1,2);
+		if(joy < 10 && joy > -10)joy=0;
+		motorSet(DRIVER,joy);
 
 		//	Set the rotating motor speed.
 
-		if(!selfAim){
-
-			motorSet(ROTATER,-joystickGetAnalog(2,1)/2);
-
-		}else{
-
-			//static int gc=0,gl=0;
-
-			//gl = gc;
-			//gc = gyroGet(gyro);
-
-		}
-
-		//	Set the cannon's speed.
+		motorSet(ROTATER,-joystickGetAnalog(2,1)/4);
 
 		in=joystickGetAnalog(2,3);
 
@@ -140,14 +67,14 @@ void operatorControl(){
 		// Set the intake's speed.
 
 		motorSet(INTAKE,joystickGetDigital(1,6,JOY_UP  )?  127 :
-				joystickGetDigital(1,6,JOY_DOWN)? -127 :
+						joystickGetDigital(1,6,JOY_DOWN)? -127 :
 						0 );
 
 		// Set the lift's speed.
 
 		lift=joystickGetDigital(2,6,JOY_UP  )?  127 :
-				joystickGetDigital(2,6,JOY_DOWN)? -127 :
-						0 ;
+			 joystickGetDigital(2,6,JOY_DOWN)? -127 :
+			 0 ;
 
 		motorSet(LIFT1,lift);
 		motorSet(LIFT2,lift);
@@ -159,130 +86,108 @@ void operatorControl(){
 		if(++uiinc==20){	// Equates to every 200ms
 			uiinc=0;
 
-			// Goto next 'window'.
-
-			if(joystickGetDigital(1,7,JOY_UP) ||
-					joystickGetDigital(2,7,JOY_UP) ){
-				if(++ctty==mtty)ctty=0;
-			}
-
-			// Goto previous 'window'.
-
-			if(joystickGetDigital(1,7,JOY_DOWN) ||
-					joystickGetDigital(2,7,JOY_DOWN) ){
-				if(--ctty==-1)ctty=mtty-1;
-			}
-
 			// Run autonomous (for testing wo/ competition switch).
 
 			if(joystickGetDigital(1,7,JOY_RIGHT))
 				autonomous();
 
-			// Goto test area.
+			// Test
 
 			if(joystickGetDigital(1,7,JOY_LEFT)){
-				static double target = 0;
-
-				if(!target) target = (imeDriveLeft+imeDriveRight) / 2 + 13;
-
-				motorSet(DRIVEL,60);
-				motorSet(DRIVER,60);
-
-				while((imeDriveLeft+imeDriveRight) / 2 < target)
-					delay(10);
-
-				motorSet(DRIVEL,0);
-				motorSet(DRIVER,0);
 
 			}
 
 		}
 
-		delay(10);	// Short delay to allow task switching.
+		delay(10);	// Short delay to allow task switching
+
+		/*
+		 *	Get the velocity of the two (IME'd) drive motors.
+		*/
+
+		static int vl,vr;
+
+		imeGetVelocity(1,&vl);
+		imeGetVelocity(0,&vr);
+
+		/*
+		 *	Convert the raw reading to rotations a minute, then inches per minute, then inches
+		 *	per second.
+		*/
+
+		Vl =  vl /* RPM Divisor         */ / 39.2L
+				 /* Wheel Circumference */ * 8
+				 /* Minutes to seconds  */ / 60;
+
+		Vr = -vr / 39.2L * 8 / 60;	// Right wheel IME is inverted
+
+		Vc = (Vl + Vr) / 2;			// Average/Center velocity
+
+		/*
+		 *	Round down the results to the nearest inch, and enforce a 2 in/s threshold.
+		*/
+
+		Vl = floor(Vl);
+		Vr = floor(Vr);
+
+		if(Vl < 2 && Vl > -2) Vl = 0;
+		if(Vr < 2 && Vr > -2) Vr = 0;
+
+		/*
+		 *	Calculate the ratio of the higher velocity to the lowest, for determining the
+		 *	radius of the circle the robot is forming.
+		*/
+
+		if(((!Vr) & (Vl!=0)) ||
+		   ((!Vl) & (Vr!=0)) ){
+
+			/*
+			 *	One wheel isn't moving, the radius is the distance between the wheels.
+			*/
+
+			R = 15;
+			goto CONT;
+
+		}else if((Vr > Vl) & (Vl > 0) ||	// Curve to forwards right
+				 (Vl > Vr) & (Vl < 0) ){	// Curve to backwards right
+
+			Vra = Vr / Vl;
+
+		}else if((Vl > Vr) & (Vr > 0) ||	// Curve to forwards left
+				 (Vr > Vl) & (Vr < 0) ){	// Curve to backwards left
+
+			Vra = Vl / Vr;
+
+		}else Vra = 0;						// No movement?
+
+		if(Vra<0) Vra *= -1;				// get absolute value of the ratio
+
+		/*
+		 *	"Plug-n'-chug" for a radius, assuming that the radius will increase by 7.5 (the
+		 *	halfway between the wheels on the robot) when multiplied by the ratio.
+		*/
+
+		for(R = 0; R < 200; R++){
+
+			if(R * Vra > R + 7 &&		// Allow a one inch margin of error
+			   R * Vra < R + 8)break;	//
+		}
+
+CONT:
+
+		/*
+		 *	Calculate the anglular velocity of the robot.
+		*/
+
+		Va = Vc / R;
+
+		/*
+		 *	Determine the increase in X and Y position based on the angular velocity and the
+		 *	average total movement.
+		*/
+
+		Px += cos(Va) * Vc * .01;	// Convert per second velocity to per 10ms, as the motors
+		Py += sin(Va) * Vc * .01;	// have only been at this velocity for that time (above).
+
 	}
 }
-
-
-//Totally Theoretical PseudoCode for AutoShoot
-//Based on IME data:
-double lVel;//=velocity of left side
-double rVel;//=velocity of right side
-double cVel;//=velocity of center (calculated below)
-double aVel;//=angular velocity (calculated below)
-
-
-//Used to find rectangular vectors * double aVel=angular velocity of robot
-//Used to store the rectangular vectors:
-double xVel1;
-double xVel2;
-double yVel1;
-double yVel2;
-
-
-//Final Position Vectors, robot and target
-double xPos;
-double yPos;
-double xTarget;
-double yTarget;
-
-
-//time difference variables
-double time1=0;
-double time2=0;
-
-int start;//1 is right blue, 2 is left blue, 3 is right blue, 4 is left blue
-
-
-//Vector Assignments:
-void Vectors(){
-	if(start==1){xPos=37;yPos=138;xTarget=137;yTarget=7;}
-	if(start==2){xPos=13;yPos=114;xTarget=137;yTarget=7;}
-	if(start==3){xPos=37;yPos=13;xTarget=137;yTarget=137;}
-	if(start==4){xPos=13;yPos=37;xTarget=137;yTarget=137;}
-	while(1){//something in the brackets
-
-		imeGetVelocity(DRIVEL,&lVel);//get reading of left velocity
-		lVel=lVel/24.5*8.64;
-
-		imeGetVelocity(DRIVER,&rVel);//get reading of right velocity
-		rVel=rVel/24.5*8.64;
-
-		int i=0;//counter for use of alternating variables
-		i++;
-		if(i==1){//just used the first time
-			time1=milis();
-		}
-		cVel=(lVel+rVel)/2;//calculates the (c)enter of the robot's velocity
-
-		if(lVel>rVel){
-			aVel=cVel/(16*lVel/(rVel-lVel));
-		}
-
-		if(rVel>lVel){
-			aVel=cVel/(16*rVel/(lVel-rVel));
-		}
-
-		else{
-			aVel=0;
-
-			if(i%2==0){
-				xVel1=cos(aVel)*cVel;//every 2 it uses these variables
-				yVel1=sin(aVel)*cVel;
-			}
-
-			else{
-				xVel2=cos(aVel)*cVel;//otherwise it uses these
-				yVel2=sin(aVel)*cVel;
-			}
-
-			time2=milis();//records the time before calculating
-
-			xPos+=((xVel1+xVel2)/2)*(time2-time1);//finds the area of the x curve using trapezoidal approx.
-			yPos+=((yVel1+yVel2)/2)*(time2-time1);//finds the area of the y curve using trapezoidal approx.
-
-			delay(20);
-		}
-		time1=milis();//records time between calculations for next time
-	}//end of while
-}//end of Vectors
-
