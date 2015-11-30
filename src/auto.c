@@ -1,16 +1,16 @@
 #include <main.h>
 
-#define TARGET_SPEED 65
+/*#define TARGET_SPEED 65
 
 static unsigned int time;
 
 void autoDelay(unsigned int ms){
 	delay(ms);
 	time-=ms;
-}
+}*/
 
 void autonomous(){
-	static char speed = 0;
+	/*static char speed = 0;
 
 	time = 15000;
 
@@ -36,6 +36,6 @@ void autonomous(){
 	//while(1);
 	delay(time);
 
-	motorStopAll();
+	motorStopAll();*/
 
 }
