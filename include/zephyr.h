@@ -3,6 +3,8 @@
 
 #include <main.h>
 
+#define PI	3.14159265L
+
 #define APPLY_THRESH(n,t)	if(n < t && n > -t){ n = 0;}
 
 /*

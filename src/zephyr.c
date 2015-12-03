@@ -81,30 +81,32 @@ void zGyroInit(void){
 #define MOTOR_PORT_COUNT	10
 
 #ifdef IME_ENABLE
-#define MOTOR_IME_COUNT		5
+#define MOTOR_IME_COUNT		7
 #endif // IME_ENABLE
 
 const char *MOTOR_PORT_MAP[MOTOR_PORT_COUNT] = {
-	"UNUSED1",
-	"UNUSED2",
-	"UNUSED3",
-	"UNUSED4",
-	"INTAKE",
-	"DRIVER",
-	"DRIVEL",
-	"LIFT1",
-	"LIFT2",
-	"ROTATER"
+	"Left cannon",
+	"Right cannon",
+	"Misc",
+	"Port 4",
+	"Intake",
+	"Right drive",
+	"Left drive",
+	"Lift 1",
+	"Lift 2",
+	"Rotater"
 };
 
 #ifdef IME_ENABLE
 
 const char *MOTOR_IME_MAP[MOTOR_IME_COUNT] = {
-	"DRIVER",
-	"DRIVEL",
-	"ROTATER",
-	"LIFT1",
-	"LIFT2"
+	"Right drive",
+	"Left drive",
+	"Rotater",
+	"Lift 1",
+	"Lift 2",
+	"Left cannon",
+	"Right cannon"
 };
 
 static unsigned int imeCount = 0;
@@ -179,8 +181,8 @@ void zDriveUpdate(void){
 	APPLY_THRESH(l,DRIVE_THRESHOLD);
 	APPLY_THRESH(r,DRIVE_THRESHOLD);
 
-	zMotorSet("DRIVEL",l);
-	zMotorSet("DRIVER",r);
+	zMotorSet("Left drive",l);
+	zMotorSet("Right drive",r);
 
 #endif // DRIVE_NORMAL
 
