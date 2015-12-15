@@ -1,6 +1,7 @@
 #include "main.h"
 
 #define round(x) ((x)>=0?(long)((x)+0.5):(long)((x)-0.5))
+#define PI =3.14159
 /*
  * Runs the user operator control code. This function will be started in its own task with the
  * default priority and stack size whenever the robot is enabled via the Field Management System
@@ -18,29 +19,8 @@
  *
  * This task should never exit; it should end with some kind of infinite loop, even if empty.
  *
-lDist*r=theta
-rDist*(r+15)=theta
-cDist*(r+7.5)=theta
-theta/lDist=r
-rDist*(theta/lDist+15)=theta
-rDist*theta/lDist+15*rDist=theta
-rDist/lDist+15*rDist/theta=1
-1-15*rDist/theta=rDist/lDist
-theta=(1-15*rDist)*lDist/rDist
-theta=(lDist-15*rDist*lDist)/rDist
-theta=lDist/rDist-heading*lDist
-theta=
 */
-static int 		rRot,lRot,cRot,time1,time2,iHeading;
-static float 	lDist,
-				theta,
-				rDist,
-				cDist,
-				wheelD=3,
-				pi=3.14159,
-				heading=15,
-				startTheta,
-				fHeading;
+
 /* notes for Clyne:
  * Other processes should not interupt the collection of data:
  * rotation calculation should be and data collection should be a high priority/primary task
@@ -51,42 +31,20 @@ static float 	lDist,
  *
  *
  */
+static long lVel,rVel,deltaPos,deltaTime,startTheta,
+					  heading,lDist,rDist,xPos,yPos,
+					  track=15;
 void operatorControl() {
 	heading=startTheta;
 	while (1) {
-		time1=micros();
-		cRot=(encoderGet(encoder1)-encoderGet(encoder2));
-		cDist=(cRot*pi)/120;
-		fHeading=(cDist/12)*(360/(2*pi));
-		iHeading=round(fHeading)%360;
 
-		lcdPrint(uart2,1,"iHeading: %d",iHeading);
-
-		if(fHeading<360){
-			motorSet(10,-60);
-			motorSet(1,20);
-
-		}else{
-			motorSet(10,0);
-			motorSet(1,0);
-
-		}
-		/* lRot=encoderGet(encoder1);
-		rRot=encoderGet(encoder2);
-		lDist=(lRot*pi)/120;
-		rDist=(rRot*pi)/120;
-		lcdPrint(uart2,1,"iHeading: %d",iHeading);
-		if(digitalRead(1)==0){
-		motorSet(1,120);
-		}
-		else if(digitalRead(2)==0){
-		motorSet(10,-120);
-		}
-		else{
-		motorSet(1,0);
-		motorSet(10,0);
-		}
-		*/
+		//get time 1 the first time
+		heading=((lDist-rDist)/(track*2*PI))*360+startTheta;//heading in degrees. might need to be radians for cosine functions
+		//get time 2
+		deltaPos=(lVel+rVel)/2*deltaTime;
+		xPos+=cos(heading)*deltaPos;
+		yPos+=sin(heading)*deltaPos;
+		//get time 1
 		delay(20);
 
 	}

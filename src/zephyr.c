@@ -1,6 +1,8 @@
 #include <zephyr.h>
 #include <main.h>
 
+#define PI =3.14159
+
 #include <string.h>
 
 #ifdef LCD_PORT
