@@ -1,41 +1,28 @@
 #include <main.h>
 
-/*#define TARGET_SPEED 65
-
-static unsigned int time;
-
-void autoDelay(unsigned int ms){
-	delay(ms);
-	time-=ms;
-}*/
+#define TARGET_RPM 1700
 
 void autonomous(){
-	/*static char speed = 0;
+	/*static double cl,cr,ca;
+	static char speed;
 
-	time = 15000;
+	speed = 30;
 
 	do{
+		speed += 10;
+		zMotorSet("Left cannon",-speed);
+		zMotorSet("Right cannon",speed);
+		delay(800);
+		cl =  zMotorIMEGetVelocity("Left cannon")  / 16.3333125L * 9;
+		cr = -zMotorIMEGetVelocity("Right cannon") / 16.3333125L * 9;
+		ca = (cl + cr) / 2;
+	}while(ca < TARGET_RPM);
 
-		speed+=10;
-
-		motorSet(CANNON1,speed);
-		motorSet(CANNON2,speed);
-		motorSet(CANNON3,speed);
-		motorSet(CANNON4,speed);
-
-		autoDelay(200);
-
-	}while(speed<TARGET_SPEED);
-
-	autoDelay(800);
-
-	motorSet(LIFT1 ,127);
-	motorSet(LIFT2 ,127);
-	motorSet(INTAKE,127);
-
-	//while(1);
-	delay(time);
+	zMotorSet("Misc",127);
+	delay(900);
+	zMotorSet("Misc",-127);
+	delay(900);
+	zMotorSet("Misc",0);
 
 	motorStopAll();*/
-
 }

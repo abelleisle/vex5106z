@@ -5,7 +5,12 @@ void initializeIO(){
 
 void initialize(){
 
-	zLCDInit();
+	pinMode(20,INPUT_ANALOG);
+
+	lcdInit(LCD_PORT);
+	lcdClear(LCD_PORT);
+	lcdSetBacklight(LCD_PORT,true);
+
 	zGyroInit();
 	zIMEInit();
 

@@ -4,56 +4,6 @@
 #include <string.h>
 
 #ifdef LCD_PORT
-
-static void (*_lcdUpdateFunc)(void *);
-static char lcdBuffer[2][16];
-
-void zLCDHandler(void *unused_param){
-	while(1){
-		lcdSetText(LCD_PORT,1,lcdBuffer[0]);
-		lcdSetText(LCD_PORT,2,lcdBuffer[1]);
-
-		if(_lcdUpdateFunc)
-			_lcdUpdateFunc(unused_param);
-
-		delay(LCD_RATE);
-	}
-}
-
-void zLCDInit(void){
-	lcdInit(LCD_PORT);
-	lcdClear(LCD_PORT);
-	lcdSetBacklight(LCD_PORT,true);
-}
-
-void zLCDStart(void){
-	taskCreate(zLCDHandler,
-			   TASK_DEFAULT_STACK_SIZE,
-			   NULL,
-			   TASK_PRIORITY_DEFAULT
-			   );
-
-	memset(&lcdBuffer,0,32);
-	strcpy(lcdBuffer[0]," libZEPHYR v1.0 ");
-}
-
-void zLCDWrite(unsigned char line,const char *text,...){
-	va_list args;
-	char buf[16];
-	va_start(args,text);
-	sprintf(buf,text,args);
-	va_end(args);
-	strcpy(lcdBuffer[line-1],buf);
-}
-
-void zLCDSetUpdateFunc(void (*func)(void *)){
-	_lcdUpdateFunc = func;
-}
-
-void zLCDClearUpdateFunc(void){
-	_lcdUpdateFunc = 0;
-}
-
 #endif // LCD_PORT
 
 #ifdef GYRO_PORT
@@ -65,6 +15,14 @@ void zGyroInit(void){
 	if((gyro=gyroInit(2,0))){
 		gyroEnabled = true;
 	}
+}
+
+int zGyroGet(void){
+	return gyroGet(gyro);
+}
+
+void zGyroReset(void){
+	gyroReset(gyro);
 }
 
 #endif // GYRO_PORT
@@ -88,13 +46,17 @@ const char *MOTOR_PORT_MAP[MOTOR_PORT_COUNT] = {
 	"Left cannon",
 	"Right cannon",
 	"Misc",
-	"Port 4",
+	"Intake",
 	"Intake",
 	"Right drive",
 	"Left drive",
 	"Lift 1",
 	"Lift 2",
 	"Rotater"
+};
+
+static unsigned int mInUse[10]={
+	0,0,0,0,0,0,0,0,0,0
 };
 
 #ifdef IME_ENABLE
@@ -117,11 +79,13 @@ void zIMEInit(void){
 
 #endif // IME_ENABLE
 
-void zMotorSet(const char *motor,char speed){
+void zMotorSet(const char *motor,int speed,unsigned int id){
 	for(unsigned char i=0;i<MOTOR_PORT_COUNT;i++){
-		if(!strcmp(MOTOR_PORT_MAP[i],motor)){
+		if(!strcmp(MOTOR_PORT_MAP[i],motor) && mInUse[i] == id){
+			if(speed >  127)speed = 127;
+			if(speed < -127)speed = -127;
 			motorSet(i+1,speed);
-			return;
+			//return;
 		}
 	}
 }
@@ -133,6 +97,21 @@ char zMotorGet(const char *motor){
 		}
 	}
 	return 0;
+}
+
+void zMotorTake(const char *motor,unsigned int id){
+	for(unsigned char i=0;i<MOTOR_PORT_COUNT;i++){
+		if(!strcmp(MOTOR_PORT_MAP[i],motor)){
+			mInUse[i] = id;
+		}
+	}
+}
+void zMotorReturn(const char *motor){
+	for(unsigned char i=0;i<MOTOR_PORT_COUNT;i++){
+		if(!strcmp(MOTOR_PORT_MAP[i],motor)){
+			mInUse[i] = 0;
+		}
+	}
 }
 
 #ifdef IME_ENABLE
@@ -159,17 +138,28 @@ int zMotorIMEGetVelocity(const char *motor){
 	return IMEValue;
 }
 
+bool zMotorIMEReset(const char *motor){
+	for(unsigned char i=0;i<imeCount;i++){
+		if(!strcmp(MOTOR_IME_MAP[i],motor)){
+			return imeReset(i);
+		}
+	}
+	return false;
+}
+
 #endif // IME_ENABLE
 
 void zDriveUpdate(void){
 
 #ifdef DRIVE_NORMAL
-	char s = joystickGetAnalog(DRIVE_JOY,DRIVE_NORMAL);
+	char y = joystickGetAnalog(DRIVE_JOY,DRIVE_NORMAL);
+	char x = joystickGetAnalog(DRIVE_JOY,4);
 
-	APPLY_THRESH(s,DRIVE_THRESHOLD);
+	APPLY_THRESH(x,DRIVE_THRESHOLD);
+	APPLY_THRESH(y,DRIVE_THRESHOLD);
 
-	motorSet(DRIVEL,s);
-	motorSet(DRIVER,s);
+	zMotorSet("Left drive" ,y+x,0);
+	zMotorSet("Right drive",y-x,0);
 
 #else
 
@@ -181,8 +171,8 @@ void zDriveUpdate(void){
 	APPLY_THRESH(l,DRIVE_THRESHOLD);
 	APPLY_THRESH(r,DRIVE_THRESHOLD);
 
-	zMotorSet("Left drive",l);
-	zMotorSet("Right drive",r);
+	zMotorSet("Left drive",l,0);
+	zMotorSet("Right drive",r,0);
 
 #endif // DRIVE_NORMAL
 

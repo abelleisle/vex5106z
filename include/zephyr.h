@@ -16,17 +16,6 @@
 #define LCD_RATE	500
 
 #ifdef LCD_PORT
-
-void zLCDInit(void);
-void zLCDStart(void);
-
-void zLCDWrite(unsigned char,	// 1-based Line Number
-			   const char *,	// Text
-			   ...);
-
-void zLCDSetUpdateFunc(void (*)(void *));	// Function Pointer
-void zLCDClearUpdateFunc(void);
-
 #endif // LCD_PORT
 
 /*
@@ -38,6 +27,8 @@ void zLCDClearUpdateFunc(void);
 #ifdef GYRO_PORT
 
 void zGyroInit(void);
+int  zGyroGet(void);
+void zGyroReset(void);
 
 #endif // GYRO_PORT
 
@@ -69,14 +60,19 @@ void zIMEInit(void);
 #define zJoyAnalog(j,a)		joystickGetAnalog(j,a)
 
 void zMotorSet(const char *,	// Motor Name
-			   char				// Desired Speed
+			   int,				// Desired Speed
+			   unsigned int		// Caller ID
 			   );
 char zMotorGet(const char *);	// Motor Name
+
+void zMotorTake(const char *,unsigned int);
+void zMotorReturn(const char *);
 
 #ifdef IME_ENABLE
 
 int zMotorIMEGet(const char *);			// Motor Name
 int zMotorIMEGetVelocity(const char *);	// Motor Name
+bool zMotorIMEReset(const char *motor);
 
 #endif // IME_ENABLE
 
