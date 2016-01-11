@@ -1,5 +1,5 @@
 #include <main.h>
-#include <zephyr.c>
+#include <zephyr.h>
 
 #define TARGET_RPM 1700
 

@@ -51,10 +51,10 @@ void zIMEInit(void);
 #define DRIVE_JOY			1
 #define DRIVE_THRESHOLD		10
 
-//#define DRIVE_NORMAL		3
+#define DRIVE_NORMAL		3
 
-#define DRIVE_TANK_LEFT		3
-#define DRIVE_TANK_RIGHT	2
+//#define DRIVE_TANK_LEFT		3
+//#define DRIVE_TANK_RIGHT	2
 
 #define zJoyDigital(j,g,b)	joystickGetDigital(j,g,b)
 #define zJoyAnalog(j,a)		joystickGetAnalog(j,a)

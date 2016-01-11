@@ -6,6 +6,7 @@ void initializeIO(){
 void initialize(){
 
 	pinMode(20,INPUT_ANALOG);
+	pinMode(13,INPUT_ANALOG);
 
 	lcdInit(LCD_PORT);
 	lcdClear(LCD_PORT);
