@@ -1,10 +1,10 @@
 #include <main.h>
 #include <zephyr.h>
 
-#define TARGET_RPM 1700
+//#define TARGET_RPM 1700
 
-void autonomous(){
-	/*static double cl,cr,ca;
+/*void autonomous(){
+	static double cl,cr,ca;
 	static char speed;
 
 	speed = 30;
@@ -25,5 +25,5 @@ void autonomous(){
 	delay(900);
 	zMotorSet("Misc",0);
 
-	motorStopAll();*/
-}
+	motorStopAll();
+}*/

@@ -50,6 +50,7 @@ static char cann = 0;
 static double rpm  = 0,
 			  trpm = 1850,
 			  arpm = 0;
+static bool cannReady = false;
 
 /**
  * Contains the current X and Y position in inches. The X axis extends from
@@ -321,8 +322,8 @@ void moveProc(void *unused_param){
 		 * inches per millisecond
 		 */
 
-		lv =  zMotorIMEGetVelocity("Left drive")  / 39.2L * 8.64L / 60000;
-		rv = -zMotorIMEGetVelocity("Right drive") / 39.2L * 8.64L / 60000;
+		lv =  zMotorIMEGetVelocity("Left drive")  / 39.2L * 12.566L / 60000;
+		rv = -zMotorIMEGetVelocity("Right drive") / 39.2L * 12.566L / 60000;
 
 		/**
 		 * Get the distance thing.
@@ -388,7 +389,7 @@ void aimProc(void *procPtr){
 		 */
 
 		cangle = (int)floor(zMotorIMEGet("Rotater") / 627.2L * 112.5);
-		rangle = zGyroGet() - (atan(ypos / (GOAL_DISTANCE - xpos)) * 180 / PI);
+		rangle = zGyroGet() + (atan(ypos / (GOAL_DISTANCE - xpos)) * 180 / PI);
 
 		lcdPrint(uart1,1,"%.3lf, %.3lf",cangle,rangle);
 
@@ -422,7 +423,7 @@ void aimProc(void *procPtr){
 
 void cannonProc(void *procPtr){
 	static double cl,cr,ca;
-	static int speed;
+	static int speed;//,ispeed = 0;
 
 	cannonProcRun = true;
 
@@ -524,10 +525,16 @@ void cannonProc(void *procPtr){
 			speed += 2;
 			zMotorSet("Left cannon" ,-speed,2);
 			zMotorSet("Right cannon", speed,2);
+			cannReady = false;
 		}else if(ca > trpm + 40){
 			speed -= 2;
+			//if(speed < ispeed) speed = ispeed;
 			zMotorSet("Left cannon" ,-speed,2);
 			zMotorSet("Right cannon", speed,2);
+			cannReady = false;
+		}else{
+			cannReady = true;
+			//ispeed = speed;
 		}
 
 		lcdPrint(uart1,2,"%.0lf|%.3lf\n",trpm,rpm);
@@ -536,7 +543,6 @@ void cannonProc(void *procPtr){
 		delay(100);
 	}
 
-	zMotorSet("Left cannon" ,0,2);
 	zMotorSet("Right cannon",0,2);
 
 	zMotorReturn("Left cannon");
@@ -633,7 +639,6 @@ PUSH:
  */
 
 void lcdUpdateFunc(void *unused_param){
-	unsigned long elapsed;
 	while(1){
 		/*
 		 * Track elapsed time since operatorControl() entrance.
@@ -645,5 +650,24 @@ void lcdUpdateFunc(void *unused_param){
 
 		//lcdPrint(uart1,2,"%4.0lf/%4.0lf",trpm,rpm);
 		delay(LCD_RATE);
+	}
+}
+
+void autonomous(){
+	static unsigned long elapsed = 0;
+	opmillis = millis();
+	taskCannon = taskCreate(cannonProc,TASK_DEFAULT_STACK_SIZE,NULL,TASK_PRIORITY_DEFAULT);
+	while(1){
+		elapsed = millis() - opmillis;
+		lcdPrint(uart1,1,"%02d:%02d",(int)(elapsed / 60000),(int)((elapsed / 1000) % 60));
+
+		if(cannReady){
+			zMotorSet("Misc",127,0);
+			delay(500);
+			zMotorSet("Misc",-127,0);
+			delay(500);
+			zMotorSet("Misc",0,0);
+		}
+		delay(10);
 	}
 }
