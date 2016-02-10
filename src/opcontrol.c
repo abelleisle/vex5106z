@@ -32,19 +32,21 @@ static Controller c[2];
 
 static Button No = UP;
 
-void taskLCDCode(void *);
-void taskPosCode(void *);
-void taskCanCode(void *);
-void taskLiftCode(void *);
-void taskArmCode(void *);
-void taskAimCode(void *);
+void taskPosCode(void *);	//	20ms
+//	 operatorControl();		//	50ms
+void taskCanCode(void *);	//	100ms
+void taskLiftCode(void *);	//	100ms
+void taskArmCode(void *);	//	100ms
+void taskAimCode(void *);	//	100ms
+void taskLCDCode(void *);	//	500ms
 
 void operatorControl(void){
-	static bool invert = false;
+	static bool invert;
 
 	DEFAULT_TRPM;
 	c[0].num = 1;
 	c[1].num = 2;
+	invert = false;
 
 	/**
 	 * Insure that the initialization functions were executed.
@@ -59,8 +61,8 @@ void operatorControl(void){
 	 * Get initial readings from each sensor.
 	 */
 
-	intakeFrontLeft.initial = readSensor(&intakeFrontLeft);
 	intakeFrontRight.initial = readSensor(&intakeFrontRight);
+	intakeFrontLeft.initial = readSensor(&intakeFrontLeft);
 	intakeLiftBase.initial = readSensor(&intakeLiftBase);
 	intakeLiftTop.initial = readSensor(&intakeLiftTop);
 	//robotGyro.initial = readSensor(&robotGyro);
@@ -90,42 +92,33 @@ void operatorControl(void){
 		setEvent(&c[0]);
 		setEvent(&c[1]);
 
-		if(keyUp(c[1].left.front.l)){
-			taskInit(taskCan,&c[1].left.front.l);
-		}else if(keyUp(c[1].left.front.u)){
-			/*if(!taskLift){
-				c[1].left.front.u = DOWN;
-				taskLift = taskCreate(taskLiftCode,TASK_DEFAULT_STACK_SIZE,&c[1].left.front.u,TASK_PRIORITY_DEFAULT);
-			}*/
-			taskInit(taskAim,&c[1].left.front.u);
-		}else if(keyUp(c[1].left.front.d)){
-			taskInit(taskArm,&c[1].left.front.d);
-		}
+		onKeyUp(c[1].left.front.l) taskInit(taskCan ,&c[1].left.front.l);
+		onKeyUp(c[1].left.front.u) taskInit(taskLift,&c[1].left.front.u);
+		onKeyUp(c[1].left.front.d) taskInit(taskArm ,&c[1].left.front.d);
+		onKeyUp(c[1].left.front.r) taskInit(taskAim ,&c[1].left.front.r);
 
-		if(keyUp(c[1].right.front.u)){
-			arpm += 50;
-		}else if(keyUp(c[1].right.front.d)){
-			arpm -= 50;
-		}else if(keyUp(c[1].right.front.l) | keyDown(c[0].right.front.l)){
-			softwareReset();
-		}
+		onKeyUp(c[1].right.front.u) arpm += 50;
+		onKeyUp(c[1].right.front.d) arpm -= 50;
+		onKeyUp(c[1].right.front.l) softwareReset();
 
-		if(keyUp(c[0].right.front.r) | keyUp(c[1].right.front.r)){
-			invert ^= true;
-		}
+		onKeyUp(c[0].right.front.r) invert ^= true;
+		onKeyUp(c[1].right.front.r) invert ^= true;
 
 		motorSetN(DRIVE_LEFT ,c[0].left.stick.y);
 		motorSetN(DRIVE_RIGHT,c[0].right.stick.y);
 
-		motorSetN(INTAKE_2,(c[0].left.back.u | c[1].left.back.u) ? 127 : (c[0].left.back.d | c[1].left.back.d) ? -127 : 0);
-		motorSetN(INTAKE_1,invert ? -motorGet(INTAKE_2) : motorGet(INTAKE_2));
+		motorSetBN(INTAKE_2,127,c[1].left.back);
+		motorCopyN(INTAKE_1,INTAKE_2);
 
-		motorSetN(LIFT_1,c[1].right.back.u ? 127 : c[1].right.back.d ? -127 : 0);
-		motorSetN(LIFT_2,motorGet(LIFT_1));
+		if(invert)
+			motorSetN(INTAKE_1,-motorGet(INTAKE_1));
+
+		motorSetBN(LIFT_1,127,c[1].right.back);
+		motorCopyN(LIFT_2,LIFT_1);
 
 		motorSetN(LIFT_ROTATER,-c[1].right.stick.x / 4);
 
-		delay(20);
+		delay(50);
 	}
 }
 
@@ -134,41 +127,67 @@ static unsigned int ballPos = 0;
 void taskLiftCode(void *unused){
 	Button *kill = (Button *)unused;
 
+	static bool turned,loaded;
+
+	turned = loaded = false;
+
+	motorTake(LIFT_1,1);
+	motorTake(LIFT_2,1);
 	motorTake(INTAKE_1,1);
 	motorTake(INTAKE_2,1);
 
-	do{
-		if(!underSensor(intakeLiftTop,LIGHT_THRESH_DEFAULT)){
-			if(cangle < 20 && cangle > -20){
-				motorTake(LIFT_1,1);
-				motorTake(LIFT_2,1);
-				motorSetK(LIFT_1,127,1);
-				motorSetK(LIFT_2,127,1);
-			}else{
-				motorSetK(LIFT_1,0,1);
-				motorSetK(LIFT_2,0,1);
-				motorFree(LIFT_1);
-				motorFree(LIFT_2);
+	motorSetK(INTAKE_1,127,1);
+	motorSetK(INTAKE_2,127,1);
 
-				if(!underSensor(intakeFrontLeft,LIGHT_THRESH_DEFAULT)  &&
-				   !underSensor(intakeFrontRight,LIGHT_THRESH_DEFAULT) ){
-					motorSetK(INTAKE_1,127,1);
-					motorSetK(INTAKE_2,127,1);
+	do{
+		turned = (cangle > 30) | (cangle < -30);
+		loaded = underSensor(intakeLiftTop,LIGHT_THRESH_DEFAULT);
+
+		/*
+		 * Stop the lift if a ball is ready to be shot.
+		 */
+
+		if(loaded){
+			motorSetK(LIFT_1,0,1);
+			motorSetK(LIFT_2,0,1);
+
+			/*
+			 * Kill the middle intake motor if there's no room.
+			 */
+
+			if(turned || underSensor(intakeLiftBase,SONIC_THRESH_DEFAULT)){
+				motorSetK(INTAKE_1,0,1);
+				if(underSensor(intakeFrontLeft,LIGHT_THRESH_DEFAULT) || underSensor(intakeFrontRight,LIGHT_THRESH_DEFAULT)){
+					motorSetK(INTAKE_2,0,1);
 				}else{
-					motorSetK(INTAKE_1,0,1);
+					motorSetK(INTAKE_2,127,1);
+				}
+			}else{
+				motorSetK(INTAKE_1,127,1);
+				motorSetK(INTAKE_2,127,1);
+			}
+		}else{
+			motorSetK(LIFT_1,127,1);
+			motorSetK(LIFT_2,127,1);
+			if(!turned){
+				motorSetK(INTAKE_1,127,1);
+				motorSetK(INTAKE_2,127,1);
+			}else{
+				motorSetK(INTAKE_1,0,1);
+				if(underSensor(intakeFrontLeft,LIGHT_THRESH_DEFAULT) || underSensor(intakeFrontRight,LIGHT_THRESH_DEFAULT)){
 					motorSetK(INTAKE_2,0,1);
 				}
 			}
-		}else{
-			motorSetK(INTAKE_1,0,1);
-			motorSetK(INTAKE_2,0,1);
-			motorSetN(LIFT_1,0);
-			motorSetN(LIFT_2,0);
 		}
+
+		delay(100);
+
 	}while(!keyDown(*kill));
 
 	motorFree(INTAKE_1);
 	motorFree(INTAKE_2);
+	motorFree(LIFT_1);
+	motorFree(LIFT_2);
 
 	while(keyDown(*kill))
 		delay(100);
@@ -186,7 +205,6 @@ void taskAimCode(void *unused){
 	target = cangle;
 
 	do{
-
 		if(cangle > target){
 			motorSetK(LIFT_ROTATER,30,4);
 		}else if(cangle < target){
@@ -391,7 +409,6 @@ PUSH:
 void taskLCDCode(void *unused){
 	static unsigned int pos = 1;
 	unsigned int lcdInput;
-	static double cangle = 0;
 
 	while(1){
 
@@ -405,15 +422,12 @@ void taskLCDCode(void *unused){
 			lcdPrint(LCD_PORT,2,"                ");
 			break;
 		case 2:
-			lcdPrint(LCD_PORT,1,"%u %u %u %u",
-					 	 	 	taskGetState(taskPos),
-					 	 	 	taskGetState(taskCan),
-								taskGetState(taskArm),
-								taskGetState(taskLift));
-			break;
-		case 3:
 			lcdPrint(LCD_PORT,1,"%lf",cangle);
 			lcdPrint(LCD_PORT,2,"                ");
+			break;
+		case 3:
+			lcdPrint(LCD_PORT,1,"%d | %d",getSensor(intakeLiftTop),getSensor(intakeLiftBase));
+			lcdPrint(LCD_PORT,2,"%d | %d",getSensor(intakeFrontLeft),getSensor(intakeFrontRight));
 			break;
 		}
 

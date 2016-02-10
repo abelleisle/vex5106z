@@ -94,8 +94,15 @@ extern unsigned char MOTOR_USE_MAP[10];
 
 #define motorTake(p,k)   MOTOR_USE_MAP[p-1] = k;
 #define motorFree(p)     MOTOR_USE_MAP[p-1] = 0;
+
 #define motorSetK(p,s,k) if(!MOTOR_USE_MAP[p-1] || MOTOR_USE_MAP[p-1] == k){ motorSet(p,s); }
 #define motorSetN(p,s)   motorSetK(p,s,0)
+
+#define motorSetBK(p,s,k,b) motorSetK(p,b.u ? s : b.d ? -s : 0,k)
+#define motorSetBN(p,s,b)   motorSetN(p,b.u ? s : b.d ? -s : 0)
+
+#define motorCopyK(p1,p2,k) motorSetK(p1,motorGet(p2),k)
+#define motorCopyN(p1,p2)   motorSetN(p1,motorGet(p2))
 
 int getIMEPort(unsigned int port);
 int getIME(unsigned int port);
@@ -108,6 +115,9 @@ int getIMEVelocity(unsigned int port);
 #define keyUp(b)   (b == KEY_UP)
 #define keyDown(b) (b == DOWN)
 
+#define onKeyUp(b)   if(keyUp(b))
+#define onKeyDown(b) if(keyDown(b))
+
 void setEvent(Controller *c);
 
 /**
@@ -115,7 +125,7 @@ void setEvent(Controller *c);
  */
 
 #define LIGHT_THRESH_DEFAULT 50
-#define SONIC_THRESH_DEFAULT 8
+#define SONIC_THRESH_DEFAULT 5
 
 #define initUltrasonic(p1,p2) initSensor((p2<<16)|p1,ULTRASONIC)
 Sensor initSensor(uint32_t port,unsigned char type);
@@ -131,7 +141,7 @@ int readSensor(Sensor *s);
  * Process library functions
  */
 
-#define taskInit(h,p) if(!h) h = taskCreate(h##Code,TASK_DEFAULT_STACK_SIZE,p,TASK_PRIORITY_DEFAULT);
+#define taskInit(h,p) h = h ? h : taskCreate(h##Code,TASK_DEFAULT_STACK_SIZE,p,TASK_PRIORITY_DEFAULT)
 
 /**
  * Main function declarations

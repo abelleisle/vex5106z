@@ -36,7 +36,7 @@ void softwareReset(void){
 
 	// Update the AIRCR.
 
-	*((uint32_t *)0xE000ED0C) = AIRCR;
+	*((volatile uint32_t *)0xE000ED0C) = AIRCR;
 
 	/*
 	 * This instruction causes the program to wait until the previous memory
