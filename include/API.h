@@ -504,7 +504,6 @@ unsigned int imeInitializeAll();
  * * \c 240.448 for the 269 IME
  * * \c 627.2 for the 393 IME in high torque mode (factory default)
  * * \c 392 for the 393 IME in high speed mode
- * * \c 261.333 for the 393 IME in turbo speed mode
  *
  * If the IME address is invalid, or the IME has not been reset or initialized, the value
  * stored in *value is undefined.
@@ -528,7 +527,6 @@ bool imeGet(unsigned char address, int *value);
  * * \c 30.056 for the 269 IME
  * * \c 39.2 for the 393 IME in high torque mode (factory default)
  * * \c 24.5 for the 393 IME in high speed mode
- * * \c 16.3333125 for the 393 IME in turbo speed mode
  *
  * If the IME address is invalid, or the IME has not been reset or initialized, the value
  * stored in *value is undefined.

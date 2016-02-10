@@ -1,320 +1,234 @@
 #include <main.h>
-#include <stdint.h>
 #include <math.h>
 
-/**
- * The distance in inches the robot starts from the goal.
- */
+#define AUTO_SKILLS
 
-#define GOAL_DISTANCE 120
+extern Sensor intakeFrontLeft,
+			  intakeFrontRight,
+			  intakeLiftBase,
+			  intakeLiftTop;//,
+			  //robotGyro;
 
-/**
- * RTTTL songs for speaker usage.
- */
+extern Gyro gyro;
 
-const char *song  = "John Cena:d=4,o=5,b=125:4p,4g5,8a5,8f5,8p,1g5,4p,4a#5,8a5,8f5,8p,1g5";
-const char *xpst  = "WinXP Login:d=4,o=5,b=160:4d#6.,4a#5.,2g#5.,4d#6,4a#5";
-const char *xpst2 = "WinXP Shutdown:d=4,o=5,b=125:4g#6,4d#6,4g#5,2a#5";
-const char *bound = "Nobody to Love:d=4,o=5,b=125:4d#5,2g5,4p,4g5,4f5,2g5,4d#5,4f5,2g5,4d#5,4f5,4g5,4d#5,4d#5,4f5,4g5,4a#4,1c5,4d#5,4f5,2g5,\
-4a#5,8g5,8f5,4d#5";
+extern bool initializeDone;
 
-/**
- * Contains how many milliseconds it took to enter operatorControl(), used to
- * measure how long we've been in operatorControl().
- */
+static TaskHandle taskLCD  = NULL,
+				  taskPos  = NULL,
+				  taskCan  = NULL,
+				  taskArm  = NULL,
+				  taskLift = NULL,
+				  taskAim  = NULL;
 
-static unsigned long opmillis = 0;
+static float xpos = 0,
+		     ypos = 0;
 
-/**
- * Contains a light sensor value collected at init time for object detection.
- */
+static double cangle = 0;
 
-static int lightThresh = 0;
-
-/**
- * The value passed to motorSet() for the cannons. This variable is declared
- * in a global scope so that the 'Speed Adjust' buttons can modify raw speed
- * when not in RPM Tracking Mode.
- */
-
-static char cann = 0;
-
-/**
- * 'rpm' is the current RPM of the cannon motors when in RPM Tracking Mode.
- * 'trpm' contains the target RPM for the cannon to reach, which is adjusted
- * when the robot moves.
- * 'arpm' stands for Adjust RPM, and contains a value modifiable by the
- * operator and added to the target RPM.
- */
-
-static double rpm  = 0,
-			  trpm = 1850,
-			  arpm = 0;
+static double rpm = 0, trpm = 1850, arpm = 0;
 static bool cannReady = false;
 
-/**
- * Contains the current X and Y position in inches. The X axis extends from
- * the front of the robot, with the Y axis perpendicular to the X axis.
- */
+static Controller c[2];
 
-static double xpos=0,ypos=0;
+static Button No = UP;
 
-/**
- * These bools are set by their corresponding tasks when those tasks are ran or
- * stopped. These prevent multiple instances of the same task.
- */
+void taskLCDCode(void *);
+void taskPosCode(void *);
+void taskCanCode(void *);
+void taskLiftCode(void *);
+void taskArmCode(void *);
+void taskAimCode(void *);
 
-static bool cannonProcRun = false,
-			armProcRun = false,
-			aimProcRun = false;
+void operatorControl(void){
+	static bool invert = false;
 
-/**
- * Task handles for the tasks, should they be needed.
- */
-
-TaskHandle taskLCD,
-		   taskCannon,
-		   taskArm,
-		   taskMove,
-		   taskAim;
-
-/**
- * Task function prototypes so that they can be spawned from operatorControl().
- */
-
-void lcdUpdateFunc(void *);
-void cannonProc(void *);
-void armProc(void *);
-void moveProc(void *);
-void aimProc(void *);
-
-/**
- * Cause the Cortex to reset, which results in the Cortex restarting the
- * operator control code.
- *
- * This reset is accomplished through setting two bits, SYSRESETREQ and
- * VECTRESET, in the Application Interrupt and Reset Control Register (AIRCR),
- * which is at a known location in memory. SYSRESETREQ will actually request
- * the system reset, while VECTRESET is 'reserved for debugging'. This second
- * bit may not need to be set; it's only set here because others have found it
- * necessary.
- */
-
-#define AIRCR_ADDR		0xE000ED0C
-#define VECTKEY			0x05FA
-#define SYSRESETREQ		(1<<2)
-#define VECTRESET		(1<<0)
-
-void softwareReset(void){
-
-	/*
-	 * Read the current value of the AIRCR, since some flags currently set in
-	 * the register need to remain the same in order for the reset to work.
-	 */
-
-	uint32_t AIRCR = *((uint32_t *)AIRCR_ADDR);
-
-	/*
-	 * Here we save the lower 16 bits of the register, write a special key to
-	 * the higher 16 bits that'll allow the write to occur, and then set the
-	 * reset flags.
-	 */
-
-	AIRCR = (AIRCR & 0xFFFF) | (VECTKEY << 16) | SYSRESETREQ | VECTRESET;
-
-	// Update the AIRCR.
-
-	*((uint32_t *)0xE000ED0C) = AIRCR;
-
-	/*
-	 * This instruction causes the program to wait until the previous memory
-	 * write is complete, ensuring it is taken into effect and the reset
-	 * request is made.
-	 */
-
-	asm("DSB");
-
-	// Wait until the system reset completes.
-
-	while(1);
-}
-
-/******************************************************************************
- * OPERATOR CONTROL                                                           *
- ******************************************************************************/
-
-void operatorControl(){
+	DEFAULT_TRPM;
+	c[0].num = 1;
+	c[1].num = 2;
 
 	/**
-	 * 'ui_inc' is used to have button reads happen at a certain interval.
-	 * 'cyc' contains what song to play next off of the speaker.
+	 * Insure that the initialization functions were executed.
 	 */
 
-	static unsigned char ui_inc = 0;
-	static unsigned char cyc = 0;
+	if(!initializeDone){
+		initializeIO();
+		initialize();
+	}
 
 	/**
-	 * The raw speed to set the lift motors to.
+	 * Get initial readings from each sensor.
 	 */
 
-	static char lift;
+	intakeFrontLeft.initial = readSensor(&intakeFrontLeft);
+	intakeFrontRight.initial = readSensor(&intakeFrontRight);
+	intakeLiftBase.initial = readSensor(&intakeLiftBase);
+	intakeLiftTop.initial = readSensor(&intakeLiftTop);
+	//robotGyro.initial = readSensor(&robotGyro);
 
-	/**
-	 * Collected init-time variables.
-	 */
+	taskInit(taskLCD,NULL);
+	taskInit(taskPos,NULL);
 
-	opmillis = millis();
-	lightThresh = analogRead(8) - 60;
-
-	/**
-	 * Spawn the LCD task and the position-tracking task.
-	 */
-
-	taskLCD=taskCreate(lcdUpdateFunc,TASK_DEFAULT_STACK_SIZE,NULL,TASK_PRIORITY_DEFAULT);
-	taskMove=taskCreate(moveProc,TASK_DEFAULT_STACK_SIZE,NULL,TASK_PRIORITY_DEFAULT+1);
+	if(taskCan)
+		taskDelete(taskCan);
 
 	while(1){
 
-		/*
-		 *	Handle drive controls and update drive motor speeds.
+		/**
+		 * Update sensor values.
 		 */
 
-		zDriveUpdate();
+		readSensor(&intakeFrontLeft);
+		readSensor(&intakeFrontRight);
+		readSensor(&intakeLiftBase);
+		readSensor(&intakeLiftTop);
+		//readSensor(&robotGyro);
 
-		//	Set the rotating motor speed.
+		/**
+		 * Read the joystick!!!
+		 */
 
-		if(!aimProcRun)
-			zMotorSet("Rotater",-zJoyAnalog(1,1) / 4,0);
+		setEvent(&c[0]);
+		setEvent(&c[1]);
 
-		// Set the intake's speed.
-
-		zMotorSet("Intake",
-				  zGetDigitalMotorSpeed(1,5,JOY_UP,JOY_DOWN,127)/*|
-				  zGetDigitalMotorSpeed(2,5,JOY_UP,JOY_DOWN,127)*/,
-				  0
-				  );
-
-		// Set the lift's speed.
-
-		if(!armProcRun){
-			lift = zGetDigitalMotorSpeed(1,6,JOY_UP,JOY_DOWN,127);
-			zMotorSet("Lift 1",lift,0);
-			zMotorSet("Lift 2",lift,0);
+		if(keyUp(c[1].left.front.l)){
+			taskInit(taskCan,&c[1].left.front.l);
+		}else if(keyUp(c[1].left.front.u)){
+			/*if(!taskLift){
+				c[1].left.front.u = DOWN;
+				taskLift = taskCreate(taskLiftCode,TASK_DEFAULT_STACK_SIZE,&c[1].left.front.u,TASK_PRIORITY_DEFAULT);
+			}*/
+			taskInit(taskAim,&c[1].left.front.u);
+		}else if(keyUp(c[1].left.front.d)){
+			taskInit(taskArm,&c[1].left.front.d);
 		}
 
-		// Set the cannon's speed.
-
-		if(!cannonProcRun){
-			zMotorSet("Left cannon" ,-cann,0);
-			zMotorSet("Right cannon", cann,0);
+		if(keyUp(c[1].right.front.u)){
+			arpm += 50;
+		}else if(keyUp(c[1].right.front.d)){
+			arpm -= 50;
+		}else if(keyUp(c[1].right.front.l) | keyDown(c[0].right.front.l)){
+			softwareReset();
 		}
 
-		if(++ui_inc == 50){
-			ui_inc = 0;
-
-			// 1-5		CPU reset
-
-			if(zJoyDigital(1,5,JOY_UP) && zJoyDigital(1,5,JOY_DOWN))
-				softwareReset();
-
-			// 1-7L		Speaker function
-
-			/*if(zJoyDigital(1,7,JOY_LEFT)){
-				speakerInit();
-				switch(cyc){
-				case 0:speakerPlayRtttl(song );break;
-				case 1:speakerPlayRtttl(xpst );break;
-				case 2:speakerPlayRtttl(xpst2);break;
-				case 3:speakerPlayRtttl(bound);break;
-				}
-				if(++cyc == 4) cyc = 0;
-				speakerShutdown();
-
-			// 2-8R		Gyroscope reset
-
-			}else if(zJoyDigital(2,8,JOY_RIGHT)){
-				zGyroReset();
-				zMotorIMEReset("Rotater");
-
-			// 2-8U		Auto-Aim start
-
-			}else if(zJoyDigital(2,8,JOY_UP))
-				taskAim = taskCreate(aimProc,TASK_DEFAULT_STACK_SIZE,NULL,TASK_PRIORITY_DEFAULT);
-
-			// 2-8D		Auto-Aim kill
-
-			else if(zJoyDigital(2,8,JOY_DOWN))
-				aimProcRun = false;*/
-
-			// 2-7U		Increase cannon (speed/target RPM)
-
-			if(zJoyDigital(1,7,JOY_UP)){
-				if(cannonProcRun) arpm += 50;
-				else if(cann < 120)cann += 10;
-
-			// 2-7D		Decrease cannon
-
-			}else if(zJoyDigital(1,7,JOY_DOWN)){
-				if(cannonProcRun) arpm -= 50;
-				else if(cann > -120)cann -= 10;
-
-			// 2-7L		Toggle RPM Tracking task.
-
-			}else if(zJoyDigital(1,7,JOY_LEFT)){
-				if(!cannonProcRun)
-					taskCannon = taskCreate(cannonProc,TASK_DEFAULT_STACK_SIZE,NULL,TASK_PRIORITY_DEFAULT);
-				else
-					cannonProcRun = false;
-			}
-
-			// 2-7R		Start Ball Pusher task.
-
-			if(zJoyDigital(1,7,JOY_RIGHT))
-				taskArm = taskCreate(armProc,TASK_DEFAULT_STACK_SIZE,NULL,TASK_PRIORITY_DEFAULT);
+		if(keyUp(c[0].right.front.r) | keyUp(c[1].right.front.r)){
+			invert ^= true;
 		}
 
-		delay(10);	// Short delay to allow task switching
+		motorSetN(DRIVE_LEFT ,c[0].left.stick.y);
+		motorSetN(DRIVE_RIGHT,c[0].right.stick.y);
+
+		motorSetN(INTAKE_2,(c[0].left.back.u | c[1].left.back.u) ? 127 : (c[0].left.back.d | c[1].left.back.d) ? -127 : 0);
+		motorSetN(INTAKE_1,invert ? -motorGet(INTAKE_2) : motorGet(INTAKE_2));
+
+		motorSetN(LIFT_1,c[1].right.back.u ? 127 : c[1].right.back.d ? -127 : 0);
+		motorSetN(LIFT_2,motorGet(LIFT_1));
+
+		motorSetN(LIFT_ROTATER,-c[1].right.stick.x / 4);
+
+		delay(20);
 	}
 }
 
-/**
- * The Position-Tracker process.
- *
- * This process tries to track the position of the robot, using a combination
- * of motor encoders and the gyroscope. This process is created directly, and
- * is expected to run at a higher priority than other tasks.
- */
+static unsigned int ballPos = 0;
 
-void moveProc(void *unused_param){
+void taskLiftCode(void *unused){
+	Button *kill = (Button *)unused;
 
-	/**
-	 * 'l' and 'r' contain IMEGet() values, 'lv' and 'rv' contain
-	 * IMEGetVelocity() values.
-	 */
+	motorTake(INTAKE_1,1);
+	motorTake(INTAKE_2,1);
 
-	static double l,r,lv,rv;
+	do{
+		if(!underSensor(intakeLiftTop,LIGHT_THRESH_DEFAULT)){
+			if(cangle < 20 && cangle > -20){
+				motorTake(LIFT_1,1);
+				motorTake(LIFT_2,1);
+				motorSetK(LIFT_1,127,1);
+				motorSetK(LIFT_2,127,1);
+			}else{
+				motorSetK(LIFT_1,0,1);
+				motorSetK(LIFT_2,0,1);
+				motorFree(LIFT_1);
+				motorFree(LIFT_2);
 
-	/**
-	 * 'dist' might contain the total distance traveled in the past 10
-	 * milliseconds.
-	 * 'head' contains the angle the robot is facing at relative to its origin.
-	 * 'dpos' is the delta position.?
-	 */
+				if(!underSensor(intakeFrontLeft,LIGHT_THRESH_DEFAULT)  &&
+				   !underSensor(intakeFrontRight,LIGHT_THRESH_DEFAULT) ){
+					motorSetK(INTAKE_1,127,1);
+					motorSetK(INTAKE_2,127,1);
+				}else{
+					motorSetK(INTAKE_1,0,1);
+					motorSetK(INTAKE_2,0,1);
+				}
+			}
+		}else{
+			motorSetK(INTAKE_1,0,1);
+			motorSetK(INTAKE_2,0,1);
+			motorSetN(LIFT_1,0);
+			motorSetN(LIFT_2,0);
+		}
+	}while(!keyDown(*kill));
 
-	static double dist,head;
+	motorFree(INTAKE_1);
+	motorFree(INTAKE_2);
+
+	while(keyDown(*kill))
+		delay(100);
+
+	taskLift = NULL;
+}
+
+void taskAimCode(void *unused){
+	Button *kill = (Button *)unused;
+
+	static double target = 0;
+
+	motorTake(LIFT_ROTATER,4);
+
+	target = cangle;
+
+	do{
+
+		if(cangle > target){
+			motorSetK(LIFT_ROTATER,30,4);
+		}else if(cangle < target){
+			motorSetK(LIFT_ROTATER,-30,4);
+		}else{
+			motorSetK(LIFT_ROTATER,0,4);
+		}
+
+		delay(100);
+	}while(!keyDown(*kill));
+
+	motorFree(LIFT_ROTATER);
+
+	while(keyDown(*kill))
+		delay(100);
+
+	taskAim = NULL;
+}
+
+void taskPosCode(void *unused){
+	static unsigned int dlime,drime;
+	static double /*l,r,*/lv,rv;
+	static double /*dist,*/head;
 	static double dpos;
+
+	dlime = getIMEPort(DRIVE_LEFT);
+	drime = getIMEPort(DRIVE_RIGHT);
 
 	while(1){
 
+		cangle = (int)floor(getIME(getIMEPort(LIFT_ROTATER)) / 627.2L * 112.5);
+		cangle += 0.28L * (cangle / 25);
+
 		/**
-		 * Get IMEGet values.
+		 * Get IME values.
 		 */
 
-		l =  zMotorIMEGet("Left drive")  / 627.2L;
-		r = -zMotorIMEGet("Right drive") / 627.2L;
+		//l = getIME(dlime) / 627.2L;
+		//r = getIME(drime) / 627.2L;
 
 		/**
-		 * Get IMEGetVelocity values and convert to inches per millisecond:
+		 * Get IME velocity values and convert to inches per millisecond:
 		 *
 		 * random # ->
 		 * motor RPM ->
@@ -322,21 +236,22 @@ void moveProc(void *unused_param){
 		 * inches per millisecond
 		 */
 
-		lv =  zMotorIMEGetVelocity("Left drive")  / 39.2L * 12.566L / 60000;
-		rv = -zMotorIMEGetVelocity("Right drive") / 39.2L * 12.566L / 60000;
+		lv =  getIMEVelocity(dlime) / 39.2L * 12.566L / 60000;
+		rv = -getIMEVelocity(drime) / 39.2L * 12.566L / 60000;
 
 		/**
 		 * Get the distance thing.
 		 */
 
-		dist = (l - r) * 8.64L;
+		//dist = (l - r) * 8.64L;
 
 		/**
 		 * Calculate heading, then trash the result in favor of the gyroscope.
 		 */
 
-		head = fmod(dist / 15,360.0L) / 2 * 90;
-		head = /*(head +*/ zGyroGet()/*) / 2*/;
+		//head = fmod(dist / 15,360.0L) / 2 * 90;
+		//head = 0;//getSensor(robotGyro);
+		head = gyroGet(gyro);
 
 		/**
 		 * Calculate the delta position thing.
@@ -355,149 +270,47 @@ void moveProc(void *unused_param){
 	}
 }
 
-/**
- * The Auto-Aim process.
- *
- * This function will attempt to keep the cannon aimed at a constant angle,
- * adjusting its position when the robot's orientation changes by using the
- * gyroscope and the encoder build into the rotater motor.
- */
+void taskCanCode(void *unused){
+	Button *kill = (Button *)unused;
 
-void aimProc(void *procPtr){
-
-	static double cangle,	// Current angle (of rotater)
-				  rangle;	// 'Robot' angle (target angle
-
-	// Tell others we're running.
-
-	aimProcRun = true;
-
-	/**
-	 * Claim necessary motors to prevent others from using them.
-	 */
-
-	zMotorTake("Rotater",1);
-
-	/**
-	 * Run until a stop is requested.
-	 */
-
-	while(aimProcRun){
-
-		/**
-		 * Read orientation sensors.
-		 */
-
-		cangle = (int)floor(zMotorIMEGet("Rotater") / 627.2L * 112.5);
-		rangle = zGyroGet() + (atan(ypos / (GOAL_DISTANCE - xpos)) * 180 / PI);
-
-		lcdPrint(uart1,1,"%.3lf, %.3lf",cangle,rangle);
-
-		/**
-		 * Adjust aim if necessary.
-		 */
-
-		if(cangle > rangle + 3)
-			zMotorSet("Rotater",30,1);
-		else if(cangle < rangle - 3)
-			zMotorSet("Rotater",-30,1);
-		else
-			zMotorSet("Rotater",0,1);
-
-		delay(100);
-	}
-
-	/**
-	 * Free motors.
-	 */
-
-	zMotorReturn("Rotater");
-}
-
-/**
- * The RPM-Targeter process.
- *
- * This will attempt to keep the cannon motors running at a constant speed,
- * determined through a target RPM set by the user.
- */
-
-void cannonProc(void *procPtr){
+	static unsigned int clime,crime;
 	static double cl,cr,ca;
-	static int speed;//,ispeed = 0;
+	static int speed;
 
-	cannonProcRun = true;
-
-	/*
-	 *	Initialize variables.
-	 *	These need to be static so that their values are preserved through
-	 *	task switchs but will retain their values when the function is
-	 *	re-called, so here we reset them.
-	 */
+	clime = getIMEPort(CANNON_LEFT);
+	crime = getIMEPort(CANNON_RIGHT);
 
 	speed = 20;
 	rpm = cl = cr = ca = 0;
 
-	/*
-	 * Reserve needed motors.
-	 */
-
-	zMotorTake("Left cannon",2);
-	zMotorTake("Right cannon",2);
-
-	/*
-	 *	Here we increase the power provided to the motors until our target
-	 *	RPM is reached.
-	 */
+	motorTake(CANNON_LEFT,2);
+	motorTake(CANNON_RIGHT,2);
 
 	do{
-
-		/*
-		 *	Bring up the speed ...
-		 *	The only reasonable explanation for an error such as the speed
-		 *	getting too high is a hardware fault in the robot (bad motor,
-		 *	bad IME, ...).
-		 */
 
 		speed += 10;
 		if(speed > 120)
 			speed = 127;
 
-		/*
-		 *	Set the power levels, and allow the motors to adjust.
-		 */
-
-		zMotorSet("Left cannon" ,-speed,2);
-		zMotorSet("Right cannon", speed,2);
+		motorSetK(CANNON_LEFT,-speed,2);
+		motorSetK(CANNON_RIGHT,speed,2);
 
 		delay(300);
 
-		/*
-		 *	Calculate the average RPM, and continue if our target is met.
-		 */
-
-		cl =  zMotorIMEGetVelocity("Left cannon")  / 16.3333125L * 9;
-		cr = -zMotorIMEGetVelocity("Right cannon") / 16.3333125L * 9;
+		cl =  getIMEVelocity(clime) / 16.3333125L * 9;
+		cr = -getIMEVelocity(crime) / 16.3333125L * 9;
 		rpm = ca = cr;//(cl + cr) / 2;
 
-	}while(cannonProcRun && ca < trpm);
+	}while(ca < trpm);
 
-	if(!cannonProcRun)
-		return;
-
-	/*
-	 *	Once we reach our target, we 'idle' at the sped and adjust as
-	 *	necessary. `cannInUse` will be cleared by any user attempt to use the
-	 *	motor.
-	 */
-
-	while(cannonProcRun){
+	while(!keyDown(*kill)){
 
 		/*
 		 *	Update RPM values.
 		 */
 
-		cl =  zMotorIMEGetVelocity("Left cannon")  / 16.3333125L * 9;
-		cr = -zMotorIMEGetVelocity("Right cannon") / 16.3333125L * 9;
+		cl =  getIMEVelocity(clime) / 16.3333125L * 9;
+		cr = -getIMEVelocity(crime) / 16.3333125L * 9;
 		rpm = ca = cr;//(cl + cr) / 2;
 
 		/*
@@ -522,152 +335,201 @@ void cannonProc(void *procPtr){
 		 */
 
 		if(ca < trpm - 40){
-			speed += 2;
-			zMotorSet("Left cannon" ,-speed,2);
-			zMotorSet("Right cannon", speed,2);
+			speed += 2 * ((trpm - rpm) / 60);
+			motorSetK(CANNON_LEFT,-speed,2);
+			motorSetK(CANNON_RIGHT,speed,2);
 			cannReady = false;
 		}else if(ca > trpm + 40){
-			speed -= 2;
-			//if(speed < ispeed) speed = ispeed;
-			zMotorSet("Left cannon" ,-speed,2);
-			zMotorSet("Right cannon", speed,2);
+			speed --;
+			motorSetK(CANNON_LEFT,-speed,2);
+			motorSetK(CANNON_RIGHT,speed,2);
 			cannReady = false;
-		}else{
+		}else
 			cannReady = true;
-			//ispeed = speed;
-		}
-
-		lcdPrint(uart1,2,"%.0lf|%.3lf\n",trpm,rpm);
-		//printf("%.0lf,%.3lf,%d\n",trpm,rpm,speed);
 
 		delay(100);
 	}
 
-	zMotorSet("Right cannon",0,2);
+	motorSetK(CANNON_LEFT,0,2);
+	motorSetK(CANNON_RIGHT,0,2);
 
-	zMotorReturn("Left cannon");
-	zMotorReturn("Right cannon");
+	motorFree(CANNON_LEFT);
+	motorFree(CANNON_RIGHT);
+
+	while(keyDown(*kill))
+		delay(100);
+
+	taskCan = NULL;
 }
 
-/**
- * The Ball-Pusher process.
- *
- * This process will handle the pusher that actually sends the ball into the
- * cannon through either an instant push or a detected one, in which the lift
- * is ran until a ball is seen via a light sensor.
- */
-
-void armProc(void *procPtr){
-	static unsigned int start;
-
-	armProcRun = true;
-
-	/*
-	 * Claim necessary motors.
-	 */
-
-	zMotorTake("Lift 1",3);
-	zMotorTake("Lift 2",3);
-	zMotorTake("Misc",3);
-
-	/*
-	 * Collect the time we started this operation, but negate it so we can add
-	 * the finish millis() call to collect a difference in milliseconds.
-	 */
-
-	start = -millis();
-
-	/*
-	 * Just run the pusher if it was requested by the user.
-	 */
-
-	if(zJoyDigital(1,8,JOY_DOWN))
+void taskArmCode(void *unused){
+	if(keyDown(c[1].left.front.r))
 		goto PUSH;
 
-	/*
-	 * Run the lift and wait until a ball is detected by the light sensor. Once
-	 * a ball is seen, stop the lift so that the pusher can do its job.
-	 */
+	while(!underSensor(intakeLiftTop,LIGHT_THRESH_DEFAULT) && ((rpm < trpm - 30) | (rpm > trpm + 50)))
+		delay(100);
 
-	zMotorSet("Lift 1",127,3);
-	zMotorSet("Lift 2",127,3);
+	/*while(ballPos != 5)
+		delay(100);*/
 
-	while(armProcRun && analogRead(8) > lightThresh)
-		delay(10);
-
-	if(!armProcRun)
-		return;
-
-	delay(300);
-
-	zMotorSet("Lift 1",0,3);
-	zMotorSet("Lift 2",0,3);
-
-	/*
-	 * Push a ball into the cannon.
-	 */
 PUSH:
 
-	zMotorSet("Misc",127,3);
+	motorTake(LIFT_PUSHER,3);
+
+	motorSetK(LIFT_PUSHER,127,3);
 	delay(500);
-	zMotorSet("Misc",-127,3);
-	delay(500);
-	zMotorSet("Misc",0,3);
+	motorSetK(LIFT_PUSHER,-127,3);
+	delay(800);
+	motorSetK(LIFT_PUSHER,0,3);
 
-	/*
-	 * 'Stop' the timer and print the result. Do this on the first line in case
-	 * the RPM tracker or another process is using the second.
-	 */
+	motorFree(LIFT_PUSHER);
 
-	start += millis();
-	lcdPrint(uart1,1,"%ums",start);
-
-	/*
-	 * Release the used motors.
-	 */
-
-	zMotorReturn("Lift 1");
-	zMotorReturn("Lift 2");
-	zMotorReturn("Misc");
-
-	armProcRun = false;
+	taskArm = NULL;
 }
 
-/**
- * The LCD update function, registered at init time to be called by libZephyr's
- * LCD code.
- */
 
-void lcdUpdateFunc(void *unused_param){
+void taskLCDCode(void *unused){
+	static unsigned int pos = 1;
+	unsigned int lcdInput;
+	static double cangle = 0;
+
 	while(1){
-		/*
-		 * Track elapsed time since operatorControl() entrance.
-		 */
 
-		//elapsed = millis() - opmillis;
-		//lcdPrint(uart1,1,"%02d:%02d",(int)(elapsed / 60000),(int)((elapsed / 1000) % 60));
-		//lcdPrint(uart1,1,"%.3lf V",(float)analogRead(1)/70/4);
+		switch(pos){
+		case 0:
+			lcdPrint(LCD_PORT,1,"(%.2lf,%.2lf)",xpos,ypos);
+			lcdPrint(LCD_PORT,2,"%s: %u",taskGetState(taskLift) == TASK_RUNNING ? "Running" : "Stopped",ballPos);
+			break;
+		case 1:
+			lcdPrint(LCD_PORT,1,"%.0lf | %.2lf\n",trpm,rpm);
+			lcdPrint(LCD_PORT,2,"                ");
+			break;
+		case 2:
+			lcdPrint(LCD_PORT,1,"%u %u %u %u",
+					 	 	 	taskGetState(taskPos),
+					 	 	 	taskGetState(taskCan),
+								taskGetState(taskArm),
+								taskGetState(taskLift));
+			break;
+		case 3:
+			lcdPrint(LCD_PORT,1,"%lf",cangle);
+			lcdPrint(LCD_PORT,2,"                ");
+			break;
+		}
 
-		//lcdPrint(uart1,2,"%4.0lf/%4.0lf",trpm,rpm);
-		delay(LCD_RATE);
+		lcdInput = lcdReadButtons(LCD_PORT);
+
+		if((lcdInput & LCD_BTN_LEFT) && pos)
+			pos--;
+		else if((lcdInput & LCD_BTN_RIGHT) && pos < 3)
+			pos++;
+		else if(lcdInput & LCD_BTN_CENTER)
+			softwareReset();
+
+		delay(500);
 	}
 }
 
-void autonomous(){
-	static unsigned long elapsed = 0;
-	opmillis = millis();
-	taskCannon = taskCreate(cannonProc,TASK_DEFAULT_STACK_SIZE,NULL,TASK_PRIORITY_DEFAULT);
-	while(1){
-		elapsed = millis() - opmillis;
-		lcdPrint(uart1,1,"%02d:%02d",(int)(elapsed / 60000),(int)((elapsed / 1000) % 60));
+#ifdef AUTO_SKILLS
 
-		if(cannReady){
-			zMotorSet("Misc",127,0);
-			delay(500);
-			zMotorSet("Misc",-127,0);
-			delay(500);
-			zMotorSet("Misc",0,0);
+/*****************************************************************************
+ * AUTONOMOUS - SKILLS                                                       *
+ *****************************************************************************/
+
+void autonomous(){
+	static unsigned long inc = 0;
+
+	EXTRA_TRPM;
+	intakeLiftTop.initial = readSensor(&intakeLiftTop);
+
+	taskInit(taskPos,&No);
+	taskInit(taskAim,&No);
+	taskInit(taskCan,&No);
+
+	while(1){
+
+		if(++inc == 50){
+			inc = 0;
+			lcdPrint(LCD_PORT,1,"%.0lf RPM",rpm);
 		}
+
+		//readSensor(&intakeLiftTop);
+		//if(rpm >= trpm){// && underSensor(intakeLiftTop,LIGHT_THRESH_DEFAULT)){
+		if(rpm > trpm - 30 && rpm < trpm + 50){
+
+			lcdPrint(LCD_PORT,2,"Launch!");
+
+			delay(500);
+
+			motorSet(LIFT_PUSHER,127);
+			delay(500);
+			motorSet(LIFT_PUSHER,-127);
+			delay(800);
+			motorSet(LIFT_PUSHER,0);
+
+			lcdPrint(LCD_PORT,2,"       ");
+		}
+
 		delay(10);
 	}
 }
+
+#else
+
+/*****************************************************************************
+ * AUTONOMOUS - NORMAL                                                       *
+ *****************************************************************************/
+
+void autonomous(){
+	static unsigned long start,elapsed = 0;
+	static unsigned long inc = 0;
+
+	EXTRA_TRPM;
+	start = millis();
+	intakeLiftTop.initial = readSensor(&intakeLiftTop);
+
+	taskInit(taskCan,&No);
+
+	motorSet(LIFT_1,127);
+	motorSet(LIFT_2,127);
+	//motorSet(INTAKE_1,127);
+	//motorSet(INTAKE_2,127);
+
+	while(1){
+		elapsed = millis() - start;
+
+		if(++inc == 50){
+			inc = 0;
+			lcdPrint(LCD_PORT,1,"%02d:%02d",(int)(elapsed / 60000),(int)((elapsed / 1000) % 60));
+			lcdPrint(LCD_PORT,2,"%.0lf RPM",rpm);
+		}
+
+		readSensor(&intakeLiftTop);
+		if(underSensor(intakeLiftTop,LIGHT_THRESH_DEFAULT)){
+
+
+			delay(200);
+			motorSet(LIFT_1,0);
+			motorSet(LIFT_2,0);
+			//motorSet(INTAKE_1,0);
+			//motorSet(INTAKE_2,0);
+
+			if(rpm >= trpm){
+				motorSet(LIFT_PUSHER,127);
+				delay(500);
+				motorSet(LIFT_PUSHER,-127);
+				delay(500);
+				motorSet(LIFT_PUSHER,0);
+
+				motorSet(LIFT_1,127);
+				motorSet(LIFT_2,127);
+				//motorSet(INTAKE_1,127);
+				//motorSet(INTAKE_2,127);
+			}
+		}
+
+		delay(10);
+	}
+}
+
+#endif // AUTO_SKILLS

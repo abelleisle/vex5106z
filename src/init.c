@@ -1,20 +1,34 @@
 #include <main.h>
 
-void initializeIO(){
+Sensor intakeFrontLeft,
+	   intakeFrontRight,
+	   intakeLiftBase,
+	   intakeLiftTop,
+	   robotGyro;
+
+Gyro gyro;
+
+bool initializeDone = false;
+
+void initializeIO(void){
+	intakeFrontLeft  = initSensor(7,ANALOG);
+	intakeFrontRight = initSensor(6,ANALOG);
+	intakeLiftBase   = initUltrasonic(1,2);
+	intakeLiftTop    = initSensor(8,ANALOG);
+	//robotGyro        = initSensor(2,GYRO);
 }
 
-void initialize(){
+void initialize(void){
+	lcdInit(uart2);
+	lcdClear(uart2);
+	lcdSetBacklight(uart2,true);
 
-	pinMode(20,INPUT_ANALOG);
-	pinMode(13,INPUT_ANALOG);
+	gyro = gyroInit(2,0);
 
-	lcdInit(LCD_PORT);
-	lcdClear(LCD_PORT);
-	lcdSetBacklight(LCD_PORT,true);
+	imeInitializeAll();
 
-	zGyroInit();
-	zIMEInit();
+	lcdPrint(uart2,1,"  5106  ZEPHYR  ");
 
-	delay(1000);
-
+	initializeDone = true;
+	delay(2000);
 }
