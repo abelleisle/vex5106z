@@ -4,67 +4,152 @@
 #include <API.h>
 #include <stdint.h>
 
+/**
+ * A two-dimensional vector structure.
+ *
+ * This structure contains a 2D coordinate for organized storage.
+ */
+
 typedef struct{
-	int x;
-	int y;
-}vec2;
+	int x; /**< The 'x' coordinate */
+	int y; /**< The 'y' coordinate */
+} vec2;
+
+/**
+ * An enum for storing a button's position.
+ *
+ * The controller subsystem allows buttons to generate three signals. These are
+ * the expected pressed and unpressed states, named DOWN and UP respectively,
+ * along with a third signal called KEY_UP that is sent out upon the immediate
+ * release of a button. This allows for one-time events to be called on button
+ * releases.
+ */
 
 typedef enum {
-	UP,
-	DOWN,
-	KEY_UP
+	UP,		/**< The unpressed state		*/
+	DOWN,	/**< The pressed state			*/
+	KEY_UP	/**< The 'just-released' state	*/
 } Button;
 
+/**
+ * A structure for storing all input states of a single controller.
+ *
+ * This object groups a joystick's axes and buttons in a convenient manner,
+ * with simple function calls to poll inputs and update them.
+ */
+
 typedef struct {
-	unsigned int num;
+	unsigned int num;	/**< The joystick's number as seen by PROS */
+
+	/**
+	 * The 'Side' structures separate the left and right halves of the
+	 * controller.
+	 */
+
 	struct Side {
+
+		/**
+		 * The 'Group' structure groups the buttons as written on the
+		 * controller.
+		 */
+
 		struct Group {
-			Button l;
-			Button r;
-			Button u;
-			Button d;
+			Button l;	/**< The left button, if it exists	*/
+			Button r;	/**< The right button, if it exists	*/
+			Button u;	/**< The up button					*/
+			Button d;	/**< The down button				*/
 		} front, back;
-		vec2 stick;
+
+		vec2 stick;	/**< The joystick's position, stored as a 2D coordinate. */
+
 	} left, right;
+
 } Controller;
 
-typedef struct {
-	enum type {
-		DIGITAL,
-		ANALOG,
-		GYRO,
-		ULTRASONIC
-	} type;
-	union data {
-		Gyro gyro;
-		Ultrasonic sonic;
-	} data;
-	unsigned int port;
-	int value;
-	int initial;
-} Sensor;
+/**
+ * A structure for handling most robot sensors.
+ *
+ * This structure contains the information necessary to handle most of the
+ * sensors provided by VEX, and allows for easier sensor reading and handling.
+ */
 
 typedef struct {
-	bool        kill_req;
-	bool		exiting;
-	TaskCode    code;
-	TaskHandle  handle;
-	void       *param;
+
+	/**
+	 * A 'type' enum for recognizing the sensor's type.
+	 */
+
+	enum type {
+		DIGITAL,	/**< A generic digital sensor	*/
+		ANALOG,		/**< A generic analog sensor	*/
+		GYRO,		/**< A gyroscore (BROKEN)		*/
+		ULTRASONIC	/**< An ultrasonic sensor		*/
+	} type;
+
+	/**
+	 * A special 'data' item for sensors that need extra variables.
+	 */
+
+	union data {
+		Gyro gyro;			/**< The gyroscope object provided by PROS	*/
+		Ultrasonic sonic;	/**< The ultrasonic object provided by PROS	*/
+	} data;
+
+	unsigned int port;	/**< The port that the sensor is connected to	*/
+	int value;			/**< The most recent value of the sensor		*/
+	int initial;		/**< The initial reading from the sensor		*/
+} Sensor;
+
+/**
+ * A structure for tracking processes.
+ *
+ * This object contains most information about a task, as well as flags for
+ * controlling the task's state.
+ */
+
+typedef struct {
+	bool kill_req;		/**< A kill request signal for ending the process	*/
+	TaskCode code;		/**< The function that is the task					*/
+	TaskHandle handle;	/**< The task handle provided by PROS				*/
+	void *param;		/**< The argument provided for the task				*/
 } Process;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define DEFAULT_TRPM trpm = 1850;
-#define EXTRA_TRPM	 trpm = 1900;
+/**
+ * A macro for setting the target RPM to it's default value.
+ */
+
+#define DEFAULT_TRPM trpm = 1650;
+
+/**
+ * A macro for setting the target RPM to a little higher than usually
+ * necessary.
+ */
+
+#define EXTRA_TRPM	 trpm = 1650;
+
+/**
+ * The mathematical constant 'pi', for trig/angular calculations.
+ */
 
 #define PI 3.14159265L
+
+/**
+ * The port that an LCD is expected to be plugged into.
+ */
 
 #define LCD_PORT uart2
 
 /**
- * Be sure that getIMEPort() matches these values (see sensor.c).
+ * An enum for the set of motor ports on the Cortex, for tagging what motors
+ * are.
+ *
+ * The getIMEPort() function defined in sensor.c takes these values for
+ * accessing their IME counterparts, so insure that this definition matches
+ * what getIMEPort() expects.
  */
 
 enum MOTOR_MAP {
@@ -79,6 +164,13 @@ enum MOTOR_MAP {
 	LIFT_2,
 	LIFT_ROTATER
 };
+
+/**
+ * An enum for tagging IMEs.
+ *
+ * getIMEPort() will allow access to these values by referencing their
+ * MOTOR_MAP counterparts, so hard-coding these shouldn't be necessary.
+ */
 
 enum MOTOR_IME_MAP {
 	DRIVE_RIGHT_IME = 0,

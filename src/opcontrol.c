@@ -1,7 +1,12 @@
 #include <main.h>
 #include <math.h>
 
-#define AUTO_SKILLS
+#include <arm.h>
+
+#define PUSH_UP		500
+#define PUSH_BACK	500
+
+//#define AUTO_SKILLS
 
 extern Sensor intakeFrontLeft,
 			  intakeFrontRight,
@@ -25,7 +30,7 @@ static float xpos = 0,
 
 static double cangle = 0;
 
-static double rpm = 0, trpm = 1850, arpm = 0;
+static double rpm = 0, trpm = 1650, arpm = 0;
 static bool cannReady = false;
 
 static Controller c[2];
@@ -40,8 +45,22 @@ void taskArmCode(void *);	//	100ms
 void taskAimCode(void *);	//	100ms
 void taskLCDCode(void *);	//	500ms
 
+static unsigned int cid = 0;
+
+
+const char *dream = "CarryOnM:d=8,o=6,b=125:a5,c,d,c,b5,a5,4a5,a5,g5,4a5,4b5,4p,a5,c,d,c,b5,a5,4e,d,c,4c,4d,4p,f,f,e,d,d,c,4e,2d,4p,f,f,4e,d,c,2g5,4p,a5,c,d,c,b5,a5,4a5,a5,g5,4a5,4b5,4p,a5,c,d,c,b5,a5,4e,d,c,4c,4d,4p,f,f,e,d,d,c,4e,2d,4p,f,f,4e,4g,2g";
+const char *final = "FinalCou:d=4,o=5,b=140:16c#6,32b,32p,8c#.6,16p,f#,p.,32d6,32p,32c#6,32p,32d6,16p.,32c#6,16p.,b.,p,32d6,32p,32c#6,32p,d6,f#,p.,32b,32p,32a,32p,32b,16p.,32a,16p.,32g#,16p.,32b,16p.,a.,32c#6,32p,32b,32p,c#6,2f#,p,16p,32d6,32p,32c#6,32p,32d6,16p.,32c#6,16p.,b.,p,32d6,32p,32c#6,32p,d6,f#,p.,32b,32p,32a,32p,32b,16p.,32a,16p.,32g#,16p.,32b,16p.,2a,16p,32g#,32p,32a,32p,b.,16a,16b,8c#6,8b,8a,8g#,f#,d6,1c#6,8p,16c#6,16d6,16c#6,16b,2c#.6,16p";
+
+
+void cdelay(unsigned int id,unsigned int ms){
+	cid = id;
+	delay(ms);
+}
+
 void operatorControl(void){
 	static bool invert;
+
+	handleDiv0();
 
 	DEFAULT_TRPM;
 	c[0].num = 1;
@@ -69,9 +88,6 @@ void operatorControl(void){
 
 	taskInit(taskLCD,NULL);
 	taskInit(taskPos,NULL);
-
-	if(taskCan)
-		taskDelete(taskCan);
 
 	while(1){
 
@@ -104,6 +120,17 @@ void operatorControl(void){
 		onKeyUp(c[0].right.front.r) invert ^= true;
 		onKeyUp(c[1].right.front.r) invert ^= true;
 
+		if(keyUp(c[0].left.front.r)){
+			speakerInit();
+			speakerPlayRtttl(final);
+			speakerShutdown();
+		}
+		if(keyUp(c[0].left.front.l)){
+			speakerInit();
+			speakerPlayRtttl(dream);
+			speakerShutdown();
+		}
+
 		motorSetN(DRIVE_LEFT ,c[0].left.stick.y);
 		motorSetN(DRIVE_RIGHT,c[0].right.stick.y);
 
@@ -117,6 +144,8 @@ void operatorControl(void){
 		motorCopyN(LIFT_2,LIFT_1);
 
 		motorSetN(LIFT_ROTATER,-c[1].right.stick.x / 4);
+
+		//motorSetBN(LIFT_PUSHER,127,c[1].left.front);
 
 		delay(50);
 	}
@@ -140,7 +169,8 @@ void taskLiftCode(void *unused){
 	motorSetK(INTAKE_2,127,1);
 
 	do{
-		turned = (cangle > 30) | (cangle < -30);
+
+		turned = (cangle > 40) | (cangle < -40);
 		loaded = underSensor(intakeLiftTop,LIGHT_THRESH_DEFAULT);
 
 		/*
@@ -205,6 +235,7 @@ void taskAimCode(void *unused){
 	target = cangle;
 
 	do{
+
 		if(cangle > target){
 			motorSetK(LIFT_ROTATER,30,4);
 		}else if(cangle < target){
@@ -336,13 +367,13 @@ void taskCanCode(void *unused){
 		 */
 
 		if(xpos < 20)
-			trpm = 1850;
-		else if(xpos < 40)
-			trpm = 1750;
-		else if(xpos < 60)
 			trpm = 1650;
-		else
+		else if(xpos < 40)
 			trpm = 1550;
+		else if(xpos < 60)
+			trpm = 1450;
+		else
+			trpm = 1350;
 
 		trpm += arpm;
 
@@ -353,7 +384,7 @@ void taskCanCode(void *unused){
 		 */
 
 		if(ca < trpm - 40){
-			speed += 2 * ((trpm - rpm) / 60);
+			speed += 2;
 			motorSetK(CANNON_LEFT,-speed,2);
 			motorSetK(CANNON_RIGHT,speed,2);
 			cannReady = false;
@@ -368,6 +399,7 @@ void taskCanCode(void *unused){
 		delay(100);
 	}
 
+
 	motorSetK(CANNON_LEFT,0,2);
 	motorSetK(CANNON_RIGHT,0,2);
 
@@ -381,8 +413,8 @@ void taskCanCode(void *unused){
 }
 
 void taskArmCode(void *unused){
-	if(keyDown(c[1].left.front.r))
-		goto PUSH;
+	/*if(keyDown(c[1].left.front.r))
+		goto PUSH;*/
 
 	while(!underSensor(intakeLiftTop,LIGHT_THRESH_DEFAULT) && ((rpm < trpm - 30) | (rpm > trpm + 50)))
 		delay(100);
@@ -390,14 +422,14 @@ void taskArmCode(void *unused){
 	/*while(ballPos != 5)
 		delay(100);*/
 
-PUSH:
+//PUSH:
 
 	motorTake(LIFT_PUSHER,3);
 
 	motorSetK(LIFT_PUSHER,127,3);
-	delay(500);
+	delay(PUSH_UP);
 	motorSetK(LIFT_PUSHER,-127,3);
-	delay(800);
+	delay(PUSH_BACK);
 	motorSetK(LIFT_PUSHER,0,3);
 
 	motorFree(LIFT_PUSHER);
@@ -476,9 +508,9 @@ void autonomous(){
 			delay(500);
 
 			motorSet(LIFT_PUSHER,127);
-			delay(500);
+			delay(PUSH_UP);
 			motorSet(LIFT_PUSHER,-127);
-			delay(800);
+			delay(PUSH_BACK);
 			motorSet(LIFT_PUSHER,0);
 
 			lcdPrint(LCD_PORT,2,"       ");
@@ -495,11 +527,12 @@ void autonomous(){
  *****************************************************************************/
 
 void autonomous(){
-	static unsigned long start,elapsed = 0;
-	static unsigned long inc = 0;
+	//static unsigned long start,elapsed = 0;
+	static unsigned int inc = 0;
+	static bool onetime = false;
 
 	EXTRA_TRPM;
-	start = millis();
+	//start = millis();
 	intakeLiftTop.initial = readSensor(&intakeLiftTop);
 
 	taskInit(taskCan,&No);
@@ -510,39 +543,41 @@ void autonomous(){
 	//motorSet(INTAKE_2,127);
 
 	while(1){
-		elapsed = millis() - start;
+		//elapsed = millis() - start;
 
 		if(++inc == 50){
 			inc = 0;
-			lcdPrint(LCD_PORT,1,"%02d:%02d",(int)(elapsed / 60000),(int)((elapsed / 1000) % 60));
-			lcdPrint(LCD_PORT,2,"%.0lf RPM",rpm);
+			lcdPrint(LCD_PORT,1,"%.0lf/%.0lf",rpm,trpm);
 		}
 
 		readSensor(&intakeLiftTop);
 		if(underSensor(intakeLiftTop,LIGHT_THRESH_DEFAULT)){
 
-
-			delay(200);
-			motorSet(LIFT_1,0);
-			motorSet(LIFT_2,0);
+			if(!onetime){
+				delay(400);
+				motorSet(LIFT_1,0);
+				motorSet(LIFT_2,0);
+				onetime = true;
+			}
 			//motorSet(INTAKE_1,0);
 			//motorSet(INTAKE_2,0);
 
-			if(rpm >= trpm){
+			if(rpm >= trpm - 50){
 				motorSet(LIFT_PUSHER,127);
-				delay(500);
+				delay(PUSH_UP);
 				motorSet(LIFT_PUSHER,-127);
-				delay(500);
+				delay(PUSH_BACK);
 				motorSet(LIFT_PUSHER,0);
 
 				motorSet(LIFT_1,127);
 				motorSet(LIFT_2,127);
 				//motorSet(INTAKE_1,127);
 				//motorSet(INTAKE_2,127);
+				onetime = false;
 			}
 		}
 
-		delay(10);
+		delay(100);
 	}
 }
 

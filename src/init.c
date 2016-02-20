@@ -16,6 +16,9 @@ void initializeIO(void){
 	intakeLiftBase   = initUltrasonic(1,2);
 	intakeLiftTop    = initSensor(8,ANALOG);
 	//robotGyro        = initSensor(2,GYRO);
+
+	pinMode(12,OUTPUT);
+	digitalWrite(12,1);
 }
 
 void initialize(void){
